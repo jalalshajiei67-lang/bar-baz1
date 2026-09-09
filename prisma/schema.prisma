@@ -72,6 +72,8 @@ model Invoice {
   status     InvoiceStatus @default(DRAFT)
   /// Sum of all item totals, snapshotted on save
   total      Decimal       @default(0) @db.Decimal(14, 2)
+  /// Whether the customer has paid this invoice
+  paid       Boolean       @default(false)
   note       String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt

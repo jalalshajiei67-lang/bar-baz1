@@ -186,6 +186,27 @@ export async function setInvoiceStatus(form: FormData) {
   redirect(`/invoices/${id}`);
 }
 
+export async function setInvoicePaid(form: FormData) {
+  const id = text(form, "id");
+  const paid = text(form, "paid") === "true";
+
+  await prisma.invoice.update({ where: { id }, data: { paid } });
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  redirect(`/invoices/${id}`);
+}
+
+export async function payAllUnpaidInvoices(form: FormData) {
+  const day = normalizeDay(text(form, "day"));
+
+  await prisma.invoice.updateMany({
+    where: { paid: false, status: "FINAL" },
+    data: { paid: true },
+  });
+  revalidatePath("/invoices");
+  redirect(`/invoices?day=${day}`);
+}
+
 export async function deleteInvoice(form: FormData) {
   const id = text(form, "id");
   const day = normalizeDay(text(form, "day"));

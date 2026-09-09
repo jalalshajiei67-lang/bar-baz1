@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
@@ -9,7 +10,7 @@ import {
   shiftDay,
   todayISO,
 } from "@/lib/format";
-import { btnGhost, card, input } from "@/lib/ui";
+import { btnGhost, card } from "@/lib/ui";
 
 import { PriceTable, type PriceRow } from "./price-table";
 
@@ -77,18 +78,7 @@ export default async function PricesPage({
         <Link href={`/prices?day=${shiftDay(day, -1)}`} className={btnGhost}>
           روز قبل
         </Link>
-        <form className="flex items-center gap-2">
-          <input
-            type="date"
-            name="day"
-            defaultValue={day}
-            className={`${input} w-auto py-1.5`}
-            dir="ltr"
-          />
-          <button type="submit" className={btnGhost}>
-            نمایش
-          </button>
-        </form>
+        <JalaliDatePicker day={day} />
         <Link href={`/prices?day=${shiftDay(day, 1)}`} className={btnGhost}>
           روز بعد
         </Link>

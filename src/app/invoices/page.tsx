@@ -1,15 +1,23 @@
 import Link from "next/link";
 
+import { payAllUnpaidInvoices } from "@/app/actions/invoices";
+import { ConfirmButton } from "@/components/buttons";
+import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
   faDay,
+  faDayShort,
+  faMonth,
+  isoDay,
+  kg,
   money,
   normalizeDay,
   shiftDay,
   todayISO,
 } from "@/lib/format";
-import { btnGhost, card, input, rowBorder, td, th } from "@/lib/ui";
+import { fromJalali, toJalali } from "@/lib/jalali";
+import { btnGhost, btnPrimary, card, rowBorder, td, th } from "@/lib/ui";
 
 import { NewInvoiceForm } from "./new-invoice-form";
 
@@ -23,7 +31,15 @@ export default async function InvoicesPage({
   const day = normalizeDay((await searchParams).day);
   const today = todayISO();
 
-  const [invoices, customers] = await Promise.all([
+  const jalaliMonth = toJalali(dayToDate(day));
+  const monthStart = fromJalali({ ...jalaliMonth, day: 1 });
+  const monthEnd = fromJalali(
+    jalaliMonth.month === 12
+      ? { year: jalaliMonth.year + 1, month: 1, day: 1 }
+      : { year: jalaliMonth.year, month: jalaliMonth.month + 1, day: 1 },
+  );
+
+  const [invoices, customers, unpaidInvoices, monthItems] = await Promise.all([
     prisma.invoice.findMany({
       where: { day: dayToDate(day) },
       orderBy: { createdAt: "asc" },
@@ -36,12 +52,49 @@ export default async function InvoicesPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.invoice.findMany({
+      where: { paid: false, status: "FINAL" },
+      orderBy: { day: "desc" },
+      include: { customer: { select: { id: true, name: true } } },
+    }),
+    prisma.invoiceItem.findMany({
+      where: {
+        invoice: { day: { gte: monthStart, lt: monthEnd }, status: "FINAL" },
+      },
+      select: { quantity: true, fruit: { select: { id: true, name: true } } },
+    }),
   ]);
 
   const dayTotal = invoices.reduce(
     (sum, invoice) => sum + Number(invoice.total),
     0,
   );
+
+  const debtByCustomer = new Map<string, { name: string; total: number }>();
+  for (const invoice of unpaidInvoices) {
+    const entry = debtByCustomer.get(invoice.customerId) ?? {
+      name: invoice.customer.name,
+      total: 0,
+    };
+    entry.total += Number(invoice.total);
+    debtByCustomer.set(invoice.customerId, entry);
+  }
+  const debtors = [...debtByCustomer.entries()]
+    .map(([customerId, entry]) => ({ customerId, ...entry }))
+    .sort((a, b) => b.total - a.total);
+
+  const fruitTotals = new Map<string, { name: string; total: number }>();
+  for (const item of monthItems) {
+    const entry = fruitTotals.get(item.fruit.id) ?? {
+      name: item.fruit.name,
+      total: 0,
+    };
+    entry.total += Number(item.quantity);
+    fruitTotals.set(item.fruit.id, entry);
+  }
+  const fruitSales = [...fruitTotals.entries()]
+    .map(([fruitId, entry]) => ({ fruitId, ...entry }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
@@ -52,18 +105,7 @@ export default async function InvoicesPage({
         <Link href={`/invoices?day=${shiftDay(day, -1)}`} className={btnGhost}>
           روز قبل
         </Link>
-        <form className="flex items-center gap-2">
-          <input
-            type="date"
-            name="day"
-            defaultValue={day}
-            className={`${input} w-auto py-1.5`}
-            dir="ltr"
-          />
-          <button type="submit" className={btnGhost}>
-            نمایش
-          </button>
-        </form>
+        <JalaliDatePicker day={day} basePath="/invoices" />
         <Link href={`/invoices?day=${shiftDay(day, 1)}`} className={btnGhost}>
           روز بعد
         </Link>
@@ -87,6 +129,84 @@ export default async function InvoicesPage({
           <NewInvoiceForm day={day} customers={customers} />
         )}
       </div>
+
+      {unpaidInvoices.length > 0 ? (
+        <div className={`${card} mb-6 p-4`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">بدهکاران</h2>
+            <form action={payAllUnpaidInvoices}>
+              <input type="hidden" name="day" value={day} />
+              <ConfirmButton
+                message="همه‌ی فاکتورهای پرداخت‌نشده به‌عنوان پرداخت‌شده علامت بخورند؟"
+                className={btnPrimary}
+              >
+                تایید پرداخت همه
+              </ConfirmButton>
+            </form>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[20rem] text-sm">
+              <thead>
+                <tr>
+                  <th className={th}>مشتری</th>
+                  <th className={th}>بدهی (تومان)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debtors.map((debtor) => (
+                  <tr key={debtor.customerId} className={rowBorder}>
+                    <td className={`${td} font-medium`}>{debtor.name}</td>
+                    <td
+                      className={`${td} font-semibold text-red-600 dark:text-red-400`}
+                    >
+                      {money(debtor.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="mt-5 text-sm font-semibold">
+            فاکتورهای پرداخت‌نشده
+          </h3>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead>
+                <tr>
+                  <th className={th}>مشتری</th>
+                  <th className={th}>تاریخ</th>
+                  <th className={th}>مبلغ (تومان)</th>
+                  <th className={th} />
+                </tr>
+              </thead>
+              <tbody>
+                {unpaidInvoices.map((invoice) => (
+                  <tr key={invoice.id} className={rowBorder}>
+                    <td className={`${td} font-medium`}>
+                      {invoice.customer.name}
+                    </td>
+                    <td className={`${td} opacity-70`}>
+                      {faDayShort(isoDay(invoice.day))}
+                    </td>
+                    <td className={`${td} font-medium`}>
+                      {money(invoice.total)}
+                    </td>
+                    <td className={`${td} text-end`}>
+                      <Link
+                        href={`/invoices/${invoice.id}`}
+                        className="text-xs underline"
+                      >
+                        مشاهده
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {invoices.length === 0 ? (
         <div className={`${card} p-8 text-center text-sm opacity-60`}>
@@ -141,6 +261,38 @@ export default async function InvoicesPage({
           </table>
         </div>
       )}
+
+      <div className={`${card} mt-6 p-4`}>
+        <h2 className="text-sm font-semibold">
+          جمع فروش میوه‌ها در {faMonth(monthStart)}
+        </h2>
+        {fruitSales.length === 0 ? (
+          <p className="mt-3 text-sm opacity-60">
+            در این ماه فروشی ثبت نشده است.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[20rem] text-sm">
+              <thead>
+                <tr>
+                  <th className={th}>میوه</th>
+                  <th className={th}>جمع فروش (کیلوگرم)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fruitSales.map((fruit) => (
+                  <tr key={fruit.fruitId} className={rowBorder}>
+                    <td className={`${td} font-medium`}>{fruit.name}</td>
+                    <td className={`${td} font-semibold`}>
+                      {kg(fruit.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </main>
   );
 }

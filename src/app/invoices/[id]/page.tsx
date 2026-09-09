@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import {
   deleteInvoice,
   deleteInvoiceItem,
+  setInvoicePaid,
   setInvoiceStatus,
   updateInvoiceItem,
 } from "@/app/actions/invoices";
@@ -205,6 +206,39 @@ export default async function InvoicePage({
           {money(invoice.total)}{" "}
           <span className="text-sm font-normal opacity-70">تومان</span>
         </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 print:hidden">
+        <form action={setInvoicePaid}>
+          <input type="hidden" name="id" value={invoice.id} />
+          <input type="hidden" name="paid" value="true" />
+          <button
+            type="submit"
+            disabled={invoice.paid}
+            className={`w-full rounded-xl px-4 py-4 text-base font-semibold transition disabled:cursor-not-allowed ${
+              invoice.paid
+                ? "bg-emerald-600 text-white opacity-100"
+                : "border-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400"
+            }`}
+          >
+            پرداخت شده ✓
+          </button>
+        </form>
+        <form action={setInvoicePaid}>
+          <input type="hidden" name="id" value={invoice.id} />
+          <input type="hidden" name="paid" value="false" />
+          <button
+            type="submit"
+            disabled={!invoice.paid}
+            className={`w-full rounded-xl px-4 py-4 text-base font-semibold transition disabled:cursor-not-allowed ${
+              !invoice.paid
+                ? "bg-red-600 text-white opacity-100"
+                : "border-2 border-red-600/30 text-red-700 hover:bg-red-600/10 dark:text-red-400"
+            }`}
+          >
+            پرداخت نشده ✕
+          </button>
+        </form>
       </div>
 
       <p className="mt-6 text-xs opacity-50 print:hidden">

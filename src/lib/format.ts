@@ -93,3 +93,20 @@ export function faDay(iso: string): string {
 export function faDayShort(iso: string): string {
   return jalaliShortFormatter.format(dayToDate(iso));
 }
+
+// fa-IR's own year+month pattern reads "۱۴۰۵ شهریور" (year first), so compose
+// it the other way round, matching faDay's month-before-year order.
+const jalaliMonthNameFormatter = new Intl.DateTimeFormat("fa-IR", {
+  timeZone: "UTC",
+  month: "long",
+});
+
+const jalaliYearFormatter = new Intl.DateTimeFormat("fa-IR", {
+  timeZone: "UTC",
+  year: "numeric",
+});
+
+/** Any Date within a month -> "شهریور ۱۴۰۵" */
+export function faMonth(date: Date): string {
+  return `${jalaliMonthNameFormatter.format(date)} ${jalaliYearFormatter.format(date)}`;
+}
