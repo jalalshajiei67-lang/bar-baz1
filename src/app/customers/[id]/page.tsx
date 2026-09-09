@@ -6,7 +6,8 @@ import { Banner } from "@/components/banner";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
 import { faDayShort, isoDay, money } from "@/lib/format";
-import { card, rowBorder, td, th } from "@/lib/ui";
+import { neshanUrl } from "@/lib/neshan";
+import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
 
 import { CustomerForm } from "../customer-form";
 
@@ -39,12 +40,24 @@ export default async function CustomerPage({
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
       <div className="mb-6 flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{customer.name}</h1>
-        <form action={deleteCustomer}>
-          <input type="hidden" name="id" value={customer.id} />
-          <ConfirmButton message={`«${customer.name}» حذف شود؟`}>
-            حذف مشتری
-          </ConfirmButton>
-        </form>
+        <div className="flex items-center gap-2">
+          {customer.lat !== null && customer.lng !== null ? (
+            <a
+              href={neshanUrl(customer.lat, customer.lng)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={btnGhost}
+            >
+              مسیریابی با نشان
+            </a>
+          ) : null}
+          <form action={deleteCustomer}>
+            <input type="hidden" name="id" value={customer.id} />
+            <ConfirmButton message={`«${customer.name}» حذف شود؟`}>
+              حذف مشتری
+            </ConfirmButton>
+          </form>
+        </div>
       </div>
 
       {saved ? (

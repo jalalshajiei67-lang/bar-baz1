@@ -1,12 +1,17 @@
 "use client";
 
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { useEffect, useRef } from "react";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+
+import { TEHRAN_BOUNDS, TEHRAN_CENTER } from "@/lib/tehran";
 
 import "leaflet/dist/leaflet.css";
 
-/** Azadi Tower — a sane default centre for Tehran. */
-export const TEHRAN: [number, number] = [35.6997, 51.3381];
+const MAP_BOUNDS: L.LatLngBoundsExpression = [
+  [TEHRAN_BOUNDS.south, TEHRAN_BOUNDS.west],
+  [TEHRAN_BOUNDS.north, TEHRAN_BOUNDS.east],
+];
 
 // Leaflet's default marker images break under bundlers, so draw the pin inline.
 const pinIcon = L.divIcon({
@@ -28,22 +33,44 @@ function ClickHandler({ onPick }: { onPick: (lat: number, lng: number) => void }
   return null;
 }
 
+export type FlyToTarget = { lat: number; lng: number; seq: number };
+
+/** Pans/zooms to `target` whenever its `seq` changes — e.g. a search result pick. */
+function FlyTo({ target }: { target: FlyToTarget | null }) {
+  const map = useMap();
+  const lastSeq = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (target && target.seq !== lastSeq.current) {
+      map.flyTo([target.lat, target.lng], 16);
+      lastSeq.current = target.seq;
+    }
+  }, [target, map]);
+
+  return null;
+}
+
 export default function MapPicker({
   lat,
   lng,
   onPick,
+  flyTo = null,
 }: {
   lat: number | null;
   lng: number | null;
   onPick: (lat: number, lng: number) => void;
+  flyTo?: FlyToTarget | null;
 }) {
   const hasPoint = lat !== null && lng !== null;
-  const center: [number, number] = hasPoint ? [lat, lng] : TEHRAN;
+  const center: [number, number] = hasPoint ? [lat, lng] : TEHRAN_CENTER;
 
   return (
     <MapContainer
       center={center}
       zoom={hasPoint ? 15 : 11}
+      minZoom={11}
+      maxBounds={MAP_BOUNDS}
+      maxBoundsViscosity={1.0}
       scrollWheelZoom
       className="relative z-0 h-72 w-full overflow-hidden rounded-lg"
     >
@@ -53,6 +80,7 @@ export default function MapPicker({
         maxZoom={19}
       />
       <ClickHandler onPick={onPick} />
+      <FlyTo target={flyTo} />
       {hasPoint ? (
         <Marker
           position={[lat, lng]}
