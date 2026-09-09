@@ -3,15 +3,13 @@
 import { useState } from "react";
 
 const routingBase = "https://neshan.org/maps/routing/car";
-const neshanPackage = "org.rajman.neshan.traffic.tehran.navigator";
 
 const coords = (lat: number, lng: number) =>
   `${lat.toFixed(6)},${lng.toFixed(6)}`;
 
-/** Neshan only draws a route when it knows where you are starting from. On
- *  Android the link is handed to the Neshan app, which uses the phone's GPS;
- *  elsewhere we read the browser's location and put it in the URL, since the
- *  web map otherwise opens with an empty origin and waits for one. */
+/** Neshan only draws a route when the URL says where you are starting from, so
+ *  the browser's location goes into the link. Without it Neshan opens with an
+ *  empty origin box and waits, which looks like the link did nothing. */
 export function NeshanRouteLink({
   lat,
   lng,
@@ -23,45 +21,43 @@ export function NeshanRouteLink({
   className?: string;
   children: React.ReactNode;
 }) {
-  const [locating, setLocating] = useState(false);
+  const [status, setStatus] = useState<"idle" | "locating" | "failed">("idle");
   const destination = `${routingBase}/destination/${coords(lat, lng)}`;
 
   return (
-    <a
-      className={className}
-      href={destination}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => {
-        if (locating) return;
-
-        // Android hands the link to the Neshan app only on the click itself, so
-        // this stays synchronous — any await in between breaks the hand-off.
-        if (/android/i.test(navigator.userAgent)) {
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <a
+        className={className}
+        href={destination}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => {
+          // After a failure the plain link opens Neshan, origin left to the user.
+          if (status !== "idle" || !navigator.geolocation) return;
           event.preventDefault();
-          window.location.href = `intent://neshan.org/maps/routing/car/destination/${coords(lat, lng)}#Intent;scheme=https;package=${neshanPackage};S.browser_fallback_url=${encodeURIComponent(destination)};end`;
-          return;
-        }
+          setStatus("locating");
 
-        if (!navigator.geolocation) return;
-        event.preventDefault();
-        setLocating(true);
+          const go = (url: string) => {
+            window.location.href = url;
+          };
 
-        const go = (url: string) => {
-          window.location.href = url;
-        };
-
-        navigator.geolocation.getCurrentPosition(
-          ({ coords: here }) =>
-            go(
-              `${routingBase}/origin/${coords(here.latitude, here.longitude)}/destination/${coords(lat, lng)}`,
-            ),
-          () => go(destination),
-          { timeout: 10_000, maximumAge: 60_000 },
-        );
-      }}
-    >
-      {locating ? "در حال یافتن موقعیت…" : children}
-    </a>
+          navigator.geolocation.getCurrentPosition(
+            ({ coords: here }) =>
+              go(
+                `${routingBase}/origin/${coords(here.latitude, here.longitude)}/destination/${coords(lat, lng)}`,
+              ),
+            () => setStatus("failed"),
+            { timeout: 10_000, maximumAge: 60_000 },
+          );
+        }}
+      >
+        {status === "locating" ? "در حال یافتن موقعیت…" : children}
+      </a>
+      {status === "failed" ? (
+        <span className="text-xs opacity-60">
+          موقعیت شما در دسترس نیست — دوباره بزنید تا نشان بدون مبدأ باز شود
+        </span>
+      ) : null}
+    </span>
   );
 }
