@@ -3,6 +3,7 @@ import Link from "next/link";
 import { deleteCustomer } from "@/app/actions/customers";
 import { Banner } from "@/components/banner";
 import { ConfirmButton } from "@/components/buttons";
+import { NeshanRouteLink } from "@/components/neshan-route-link";
 import { prisma } from "@/lib/db";
 import { btnGhost, btnPrimary, card, input, rowBorder, td, th } from "@/lib/ui";
 
@@ -72,7 +73,7 @@ export default async function CustomersPage({
                 <th className={th}>نام</th>
                 <th className={th}>تماس</th>
                 <th className={th}>آدرس</th>
-                <th className={th}>نقشه</th>
+                <th className={th}>مسیریابی</th>
                 <th className={th}>فاکتورها</th>
                 <th className={th} />
               </tr>
@@ -96,14 +97,13 @@ export default async function CustomersPage({
                   </td>
                   <td className={td}>
                     {customer.lat !== null && customer.lng !== null ? (
-                      <a
+                      <NeshanRouteLink
+                        lat={customer.lat}
+                        lng={customer.lng}
                         className="text-emerald-700 hover:underline dark:text-emerald-400"
-                        href={`https://www.openstreetmap.org/?mlat=${customer.lat}&mlon=${customer.lng}#map=17/${customer.lat}/${customer.lng}`}
-                        target="_blank"
-                        rel="noreferrer"
                       >
-                        مشاهده
-                      </a>
+                        مسیریابی با نشان
+                      </NeshanRouteLink>
                     ) : (
                       <span className="opacity-40">—</span>
                     )}
