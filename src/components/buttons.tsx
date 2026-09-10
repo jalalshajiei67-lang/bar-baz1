@@ -21,20 +21,26 @@ export function SubmitButton({
   );
 }
 
-/** Submit button that asks first — used for anything destructive. */
+/**
+ * Submit button that asks first — used for anything destructive.
+ * `formAction` lets one row's delete live inside a bigger editing form.
+ */
 export function ConfirmButton({
   children,
   message,
   className = btnDanger,
+  formAction,
 }: {
   children: React.ReactNode;
   message: string;
   className?: string;
+  formAction?: (formData: FormData) => void | Promise<void>;
 }) {
   return (
     <button
       type="submit"
       className={className}
+      formAction={formAction}
       onClick={(event) => {
         if (!window.confirm(message)) event.preventDefault();
       }}

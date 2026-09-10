@@ -39,7 +39,7 @@ export function NewInvoiceForm({
         ) : null}
       </div>
 
-      <SubmitButton pendingLabel="…">باز کردن فاکتور</SubmitButton>
+      <SubmitButton pendingLabel="…">ایجاد فاکتور</SubmitButton>
     </form>
   );
 }

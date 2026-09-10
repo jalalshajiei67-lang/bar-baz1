@@ -25,3 +25,14 @@ export const td = "px-3 py-2 align-middle";
 export const rowBorder = "border-t border-black/8 dark:border-white/10";
 
 export const fieldError = "mt-1 text-xs text-red-600 dark:text-red-400";
+
+/* Phone-sized variants. The invoice is filled in standing at a shop door, one
+   thumb on the screen, so its controls are taller than the desk-bound forms. */
+
+export const inputLarge =
+  "w-full rounded-lg border border-black/15 bg-white px-3 py-3 text-base outline-none transition placeholder:opacity-40 focus:border-black/45 disabled:opacity-50 dark:border-white/20 dark:bg-white/5 dark:focus:border-white/55";
+
+export const btnLarge =
+  "inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+
+export const btnPrimaryLarge = `${btnLarge} bg-emerald-600 text-white hover:bg-emerald-700`;

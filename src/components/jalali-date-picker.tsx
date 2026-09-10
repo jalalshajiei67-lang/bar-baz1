@@ -27,7 +27,7 @@ const WEEKDAY_LABELS = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
 /** Popover Jalali calendar; navigates to `${basePath}?day=YYYY-MM-DD` on pick. */
 export function JalaliDatePicker({
   day,
-  basePath = "/prices",
+  basePath = "/invoices",
 }: {
   day: string;
   basePath?: string;

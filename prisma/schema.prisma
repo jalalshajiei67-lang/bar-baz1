@@ -28,7 +28,8 @@ model Customer {
   @@index([name])
 }
 
-/// A fruit we sell. Prices are stored per day in DailyPrice.
+/// A fruit we sell. It has no stored price: every price is bargained with the
+/// customer and typed on the invoice line itself.
 model Fruit {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -37,26 +38,7 @@ model Fruit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  prices       DailyPrice[]
   invoiceItems InvoiceItem[]
-}
-
-/// One price for one fruit on one day. History is kept forever (archive).
-model DailyPrice {
-  id      String   @id @default(cuid())
-  fruitId String
-  /// Date the price is valid for (stored at 00:00 UTC)
-  day     DateTime @db.Date
-  /// Price per kg, in Toman
-  price   Decimal  @db.Decimal(12, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  fruit Fruit @relation(fields: [fruitId], references: [id], onDelete: Cascade)
-
-  @@unique([fruitId, day])
-  @@index([day])
 }
 
 enum InvoiceStatus {
@@ -85,15 +67,15 @@ model Invoice {
   @@index([day])
 }
 
-/// A line on an invoice. unitPrice is copied from that day's DailyPrice so
-/// later price edits never change a past invoice.
+/// A line on an invoice. unitPrice is whatever was agreed with this customer
+/// for this delivery, so two customers can pay different prices on the same day.
 model InvoiceItem {
   id        String  @id @default(cuid())
   invoiceId String
   fruitId   String
   /// Weight in kg with 3 decimals, e.g. 3.123
   quantity  Decimal @db.Decimal(10, 3)
-  /// Price per kg at the time the line was added
+  /// Price per kg agreed with this customer for this line, in Toman
   unitPrice Decimal @db.Decimal(12, 2)
   /// quantity * unitPrice, snapshotted
   lineTotal Decimal @db.Decimal(14, 2)

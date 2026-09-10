@@ -27,7 +27,6 @@ export async function createFruit(
 
   await prisma.fruit.create({ data: parsed.data });
   revalidatePath("/fruits");
-  revalidatePath("/prices");
   return { ok: true, message: "اضافه شد" };
 }
 
@@ -55,7 +54,6 @@ export async function toggleFruit(form: FormData) {
     data: { active: !fruit.active },
   });
   revalidatePath("/fruits");
-  revalidatePath("/prices");
   redirect("/fruits");
 }
 
@@ -74,6 +72,5 @@ export async function deleteFruit(form: FormData) {
 
   await prisma.fruit.delete({ where: { id } });
   revalidatePath("/fruits");
-  revalidatePath("/prices");
   redirect("/fruits");
 }

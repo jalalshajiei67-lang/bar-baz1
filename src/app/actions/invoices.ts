@@ -10,10 +10,28 @@ import {
   dayInput,
   fieldErrors,
   numeric,
+  priceInput,
+  priceNumeric,
   quantityInput,
   text,
   type ActionState,
 } from "@/lib/validation";
+
+const ZERO = new Prisma.Decimal(0);
+
+/**
+ * A price is bargained per customer, so a line may be weighed now and priced
+ * after the haggling. The field rests at "000" and empties to "", and both of
+ * those mean "not agreed yet" and store 0.
+ */
+function parsePrice(
+  raw: string,
+): { ok: true; price: Prisma.Decimal } | { ok: false; message: string } {
+  if (raw === "" || /^0+$/.test(raw)) return { ok: true, price: ZERO };
+  const parsed = priceInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
+  return { ok: true, price: new Prisma.Decimal(parsed.data) };
+}
 
 /** Re-reads the lines and stores the sum on the invoice. */
 async function recalculateTotal(invoiceId: string) {
@@ -23,7 +41,7 @@ async function recalculateTotal(invoiceId: string) {
   });
   await prisma.invoice.update({
     where: { id: invoiceId },
-    data: { total: sum._sum.lineTotal ?? new Prisma.Decimal(0) },
+    data: { total: sum._sum.lineTotal ?? ZERO },
   });
 }
 
@@ -68,8 +86,8 @@ export async function openInvoice(
 }
 
 /**
- * Adds a line. The unit price is copied from that day's DailyPrice, so a later
- * price change never rewrites this invoice.
+ * Adds a line with the weight and the price agreed on the spot. Adding a fruit
+ * that is already on the invoice adds the weights up and keeps the newer price.
  */
 export async function addInvoiceItem(
   invoiceId: string,
@@ -80,27 +98,14 @@ export async function addInvoiceItem(
 
   const fruitId = text(form, "fruitId");
   const parsedQuantity = quantityInput.safeParse(numeric(form, "quantity"));
+  const parsedPrice = parsePrice(priceNumeric(form, "unitPrice"));
 
   if (!fruitId) return { ok: false, fieldErrors: { fruitId: "میوه را انتخاب کنید" } };
   if (!parsedQuantity.success) {
     return { ok: false, fieldErrors: fieldErrors(parsedQuantity.error) };
   }
-
-  const invoice = await prisma.invoice.findUniqueOrThrow({
-    where: { id: invoiceId },
-    select: { day: true },
-  });
-
-  const dailyPrice = await prisma.dailyPrice.findUnique({
-    where: { fruitId_day: { fruitId, day: invoice.day } },
-    select: { price: true },
-  });
-
-  if (!dailyPrice) {
-    return {
-      ok: false,
-      fieldErrors: { fruitId: "برای این میوه در این تاریخ قیمتی ثبت نشده است" },
-    };
+  if (!parsedPrice.ok) {
+    return { ok: false, fieldErrors: { unitPrice: parsedPrice.message } };
   }
 
   const existing = await prisma.invoiceItem.findUnique({
@@ -108,22 +113,16 @@ export async function addInvoiceItem(
     select: { quantity: true },
   });
 
-  // Adding the same fruit twice adds up — two crates of the same thing.
+  const unitPrice = parsedPrice.price;
   const quantity = new Prisma.Decimal(parsedQuantity.data).plus(
     existing?.quantity ?? 0,
   );
-  const lineTotal = quantity.mul(dailyPrice.price).toDecimalPlaces(2);
+  const lineTotal = quantity.mul(unitPrice).toDecimalPlaces(2);
 
   await prisma.invoiceItem.upsert({
     where: { invoiceId_fruitId: { invoiceId, fruitId } },
-    create: {
-      invoiceId,
-      fruitId,
-      quantity,
-      unitPrice: dailyPrice.price,
-      lineTotal,
-    },
-    update: { quantity, unitPrice: dailyPrice.price, lineTotal },
+    create: { invoiceId, fruitId, quantity, unitPrice, lineTotal },
+    update: { quantity, unitPrice, lineTotal },
   });
 
   await recalculateTotal(invoiceId);
@@ -131,38 +130,67 @@ export async function addInvoiceItem(
   return { ok: true };
 }
 
-export async function updateInvoiceItem(form: FormData) {
-  const itemId = text(form, "itemId");
-  const item = await prisma.invoiceItem.findUnique({
-    where: { id: itemId },
-    select: { invoiceId: true, unitPrice: true },
-  });
-  if (!item) redirect("/invoices");
-  await assertDraft(item.invoiceId);
+/**
+ * Saves every line's weight and price in one go — the customer haggles over the
+ * whole load, so the numbers are corrected together rather than row by row.
+ */
+export async function saveInvoiceItems(
+  invoiceId: string,
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  await assertDraft(invoiceId);
 
-  const parsed = quantityInput.safeParse(numeric(form, "quantity"));
-  if (!parsed.success) {
-    redirect(
-      `/invoices/${item.invoiceId}?error=${encodeURIComponent(parsed.error.issues[0].message)}`,
+  const items = await prisma.invoiceItem.findMany({
+    where: { invoiceId },
+    select: { id: true },
+  });
+
+  const errors: Record<string, string> = {};
+  const writes: Prisma.PrismaPromise<unknown>[] = [];
+
+  for (const item of items) {
+    const parsedQuantity = quantityInput.safeParse(numeric(form, `quantity_${item.id}`));
+    const parsedPrice = parsePrice(priceNumeric(form, `price_${item.id}`));
+
+    if (!parsedQuantity.success) {
+      errors[`quantity_${item.id}`] = parsedQuantity.error.issues[0].message;
+    }
+    if (!parsedPrice.ok) {
+      errors[`price_${item.id}`] = parsedPrice.message;
+    }
+    if (!parsedQuantity.success || !parsedPrice.ok) continue;
+
+    const quantity = new Prisma.Decimal(parsedQuantity.data);
+    const unitPrice = parsedPrice.price;
+    writes.push(
+      prisma.invoiceItem.update({
+        where: { id: item.id },
+        data: {
+          quantity,
+          unitPrice,
+          lineTotal: quantity.mul(unitPrice).toDecimalPlaces(2),
+        },
+      }),
     );
   }
 
-  const quantity = new Prisma.Decimal(parsed.data);
-  await prisma.invoiceItem.update({
-    where: { id: itemId },
-    data: {
-      quantity,
-      lineTotal: quantity.mul(item.unitPrice).toDecimalPlaces(2),
-    },
-  });
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, fieldErrors: errors, message: "چند مقدار معتبر نیست" };
+  }
 
-  await recalculateTotal(item.invoiceId);
-  revalidatePath(`/invoices/${item.invoiceId}`);
-  redirect(`/invoices/${item.invoiceId}`);
+  await prisma.$transaction(writes);
+  await recalculateTotal(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { ok: true, message: "ذخیره شد" };
 }
 
-export async function deleteInvoiceItem(form: FormData) {
-  const itemId = text(form, "itemId");
+/**
+ * `itemId` is bound rather than posted: React reuses a button's `name` to encode
+ * its `formAction`, so a delete button living inside the editing form cannot
+ * carry a form field of its own.
+ */
+export async function deleteInvoiceItem(itemId: string) {
   const item = await prisma.invoiceItem.findUnique({
     where: { id: itemId },
     select: { invoiceId: true },

@@ -1,11 +1,9 @@
-import Link from "next/link";
-
 import { deleteFruit, renameFruit, toggleFruit } from "@/app/actions/fruits";
 import { Banner } from "@/components/banner";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
-import { faDayShort, isoDay, money, todayISO } from "@/lib/format";
-import { btnGhost, card, input, rowBorder, td, th } from "@/lib/ui";
+import { faDayShort, isoDay, money } from "@/lib/format";
+import { card, input, rowBorder, td, th } from "@/lib/ui";
 
 import { FruitForm } from "./fruit-form";
 
@@ -21,12 +19,17 @@ export default async function FruitsPage({
   const fruits = await prisma.fruit.findMany({
     orderBy: [{ active: "desc" }, { name: "asc" }],
     include: {
-      prices: { orderBy: { day: "desc" }, take: 1 },
+      // The last price this fruit actually sold for — there is no price list
+      // any more, every price is agreed on the invoice itself.
+      invoiceItems: {
+        where: { unitPrice: { gt: 0 } },
+        orderBy: [{ invoice: { day: "desc" } }, { createdAt: "desc" }],
+        take: 1,
+        select: { unitPrice: true, invoice: { select: { day: true } } },
+      },
       _count: { select: { invoiceItems: true } },
     },
   });
-
-  const today = todayISO();
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
@@ -34,11 +37,7 @@ export default async function FruitsPage({
         <div>
           <h1 className="text-xl font-semibold tracking-tight">میوه‌ها</h1>
           <p className="mt-1 text-sm opacity-60">
-            قیمت‌ها در صفحه‌ی{" "}
-            <Link href={`/prices?day=${today}`} className="underline">
-              قیمت روز
-            </Link>{" "}
-            وارد می‌شوند
+            قیمت هر میوه هنگام ثبت ردیف، داخل خود فاکتور وارد می‌شود
           </p>
         </div>
       </div>
@@ -63,14 +62,14 @@ export default async function FruitsPage({
             <thead>
               <tr>
                 <th className={th}>نام</th>
-                <th className={th}>آخرین قیمت</th>
+                <th className={th}>آخرین قیمت فروش</th>
                 <th className={th}>وضعیت</th>
                 <th className={th} />
               </tr>
             </thead>
             <tbody>
               {fruits.map((fruit) => {
-                const last = fruit.prices[0];
+                const last = fruit.invoiceItems[0];
                 return (
                   <tr key={fruit.id} className={rowBorder}>
                     <td className={td}>
@@ -92,11 +91,11 @@ export default async function FruitsPage({
                     </td>
                     <td className={td}>
                       {last ? (
-                        <span>
-                          {money(last.price)}
+                        <span className="whitespace-nowrap">
+                          {money(last.unitPrice)}
                           <span className="opacity-50">
                             {" "}
-                            / {faDayShort(isoDay(last.day))}
+                            / {faDayShort(isoDay(last.invoice.day))}
                           </span>
                         </span>
                       ) : (
@@ -139,10 +138,7 @@ export default async function FruitsPage({
 
       <p className="mt-4 text-xs opacity-50">
         میوه‌ای که در فاکتوری استفاده شده حذف نمی‌شود؛ آن را غیرفعال کنید تا از
-        فهرست قیمت روز کنار برود.{" "}
-        <Link href="/prices" className={`${btnGhost} ms-1 px-2 py-0.5 text-xs`}>
-          رفتن به قیمت روز
-        </Link>
+        فهرست انتخاب میوه در فاکتورها کنار برود.
       </p>
     </main>
   );

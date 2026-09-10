@@ -37,6 +37,15 @@ export function numeric(form: FormData, key: string): string {
   return normalizeDigits(text(form, key));
 }
 
+/**
+ * Same as `numeric`, for price fields: those are typed with thousands
+ * separators, so "850,000" and "۸۵۰٬۰۰۰" both reach Prisma as 850000. Weights
+ * deliberately do not get this — "3,123" there means 3.123 kg, not 3123.
+ */
+export function priceNumeric(form: FormData, key: string): string {
+  return numeric(form, key).replace(/,/g, "");
+}
+
 /** FormData value -> trimmed string or null when empty. */
 export function optionalText(form: FormData, key: string): string | null {
   const value = text(form, key);

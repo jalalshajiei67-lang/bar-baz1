@@ -9,14 +9,10 @@ const sections = [
     description: "قنادی‌ها، شماره تماس و موقعیت روی نقشه تهران",
   },
   {
-    href: "/prices",
-    title: "قیمت روز",
-    description: "قیمت هر کیلو را برای امروز ثبت کنید؛ روزهای قبل بایگانی می‌ماند",
-  },
-  {
     href: "/invoices",
     title: "فاکتورها",
-    description: "برای هر مشتری وزن هر میوه را وارد کنید و جمع کل را ببینید",
+    description:
+      "برای هر مشتری وزن و قیمت توافقی هر میوه را وارد کنید و جمع کل را ببینید",
   },
   {
     href: "/fruits",
@@ -29,13 +25,13 @@ export default function Home() {
   const today = todayISO();
 
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-14">
+    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
       <h1 className="text-2xl font-semibold tracking-tight">بار-باز</h1>
       <p className="mt-2 text-sm opacity-60">
         مدیریت فاکتور روزانه‌ی پخش میوه — {faDay(today)}
       </p>
 
-      <ul className="mt-10 grid gap-3 sm:grid-cols-2">
+      <ul className="mt-8 grid gap-3 sm:mt-10 sm:grid-cols-2">
         {sections.map((section) => (
           <li key={section.href}>
             <Link
@@ -51,9 +47,9 @@ export default function Home() {
         ))}
       </ul>
 
-      <p className="mt-10 text-xs opacity-50">
-        روال روزانه: قیمت‌ها را ثبت کنید ← فاکتور مشتری را باز کنید ← وزن هر میوه
-        را با سه رقم اعشار وارد کنید ← جمع کل را ببینید.
+      <p className="mt-8 text-xs opacity-50 sm:mt-10">
+        روال روزانه: فاکتور مشتری را باز کنید ← برای هر میوه وزن و قیمتی که با او
+        توافق کرده‌اید را وارد کنید ← جمع کل را ببینید.
       </p>
     </main>
   );
