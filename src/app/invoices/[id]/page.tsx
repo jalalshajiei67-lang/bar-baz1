@@ -122,6 +122,7 @@ export default async function InvoicePage({
     name: item.fruit.name,
     quantity: item.quantity.toString(),
     unitPrice: item.unitPrice.toString(),
+    packCount: item.packCount === null ? "" : String(item.packCount),
   }));
 
   const itemsTable = (
@@ -130,6 +131,7 @@ export default async function InvoicePage({
         <thead>
           <tr>
             <th className={th}>میوه</th>
+            <th className={th}>تعداد</th>
             <th className={th}>وزن</th>
             <th className={th}>قیمت</th>
             <th className={th}>مبلغ</th>
@@ -138,7 +140,7 @@ export default async function InvoicePage({
         <tbody>
           {invoice.items.length === 0 ? (
             <tr className={rowBorder}>
-              <td className={`${td} py-6 text-center opacity-60`} colSpan={4}>
+              <td className={`${td} py-6 text-center opacity-60`} colSpan={5}>
                 هنوز ردیفی اضافه نشده است.
               </td>
             </tr>
@@ -146,6 +148,13 @@ export default async function InvoicePage({
             invoice.items.map((item) => (
               <tr key={item.id} className={rowBorder}>
                 <td className={`${td} font-medium`}>{item.fruit.name}</td>
+                <td className={`${td} whitespace-nowrap tabular-nums`}>
+                  {item.packCount === null ? (
+                    <span className="opacity-60">فله</span>
+                  ) : (
+                    item.packCount
+                  )}
+                </td>
                 <td className={`${td} whitespace-nowrap tabular-nums`}>
                   {kg(item.quantity)}
                 </td>

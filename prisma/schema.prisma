@@ -75,6 +75,8 @@ model InvoiceItem {
   fruitId   String
   /// Weight in kg with 3 decimals, e.g. 3.123
   quantity  Decimal @db.Decimal(10, 3)
+  /// How many boxes/packs this line came in. null = فله, sold loose.
+  packCount Int?
   /// Price per kg agreed with this customer for this line, in Toman
   unitPrice Decimal @db.Decimal(12, 2)
   /// quantity * unitPrice, snapshotted

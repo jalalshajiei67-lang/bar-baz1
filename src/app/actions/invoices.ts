@@ -10,6 +10,7 @@ import {
   dayInput,
   fieldErrors,
   numeric,
+  packCount,
   priceInput,
   priceNumeric,
   quantityInput,
@@ -29,7 +30,8 @@ function parsePrice(
 ): { ok: true; price: Prisma.Decimal } | { ok: false; message: string } {
   if (raw === "" || /^0+$/.test(raw)) return { ok: true, price: ZERO };
   const parsed = priceInput.safeParse(raw);
-  if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
+  if (!parsed.success)
+    return { ok: false, message: parsed.error.issues[0].message };
   return { ok: true, price: new Prisma.Decimal(parsed.data) };
 }
 
@@ -69,8 +71,10 @@ export async function openInvoice(
   const customerId = text(form, "customerId");
   const parsedDay = dayInput.safeParse(text(form, "day"));
 
-  if (!customerId) return { ok: false, fieldErrors: { customerId: "مشتری را انتخاب کنید" } };
-  if (!parsedDay.success) return { ok: false, fieldErrors: { day: "تاریخ معتبر نیست" } };
+  if (!customerId)
+    return { ok: false, fieldErrors: { customerId: "مشتری را انتخاب کنید" } };
+  if (!parsedDay.success)
+    return { ok: false, fieldErrors: { day: "تاریخ معتبر نیست" } };
 
   const day = dayToDate(parsedDay.data);
   const existing = await prisma.invoice.findFirst({
@@ -97,10 +101,12 @@ export async function addInvoiceItem(
   await assertDraft(invoiceId);
 
   const fruitId = text(form, "fruitId");
+  const packs = packCount(form, "packCount");
   const parsedQuantity = quantityInput.safeParse(numeric(form, "quantity"));
   const parsedPrice = parsePrice(priceNumeric(form, "unitPrice"));
 
-  if (!fruitId) return { ok: false, fieldErrors: { fruitId: "میوه را انتخاب کنید" } };
+  if (!fruitId)
+    return { ok: false, fieldErrors: { fruitId: "میوه را انتخاب کنید" } };
   if (!parsedQuantity.success) {
     return { ok: false, fieldErrors: fieldErrors(parsedQuantity.error) };
   }
@@ -110,19 +116,29 @@ export async function addInvoiceItem(
 
   const existing = await prisma.invoiceItem.findUnique({
     where: { invoiceId_fruitId: { invoiceId, fruitId } },
-    select: { quantity: true },
+    select: { quantity: true, packCount: true },
   });
 
   const unitPrice = parsedPrice.price;
   const quantity = new Prisma.Decimal(parsedQuantity.data).plus(
     existing?.quantity ?? 0,
   );
+  // Boxes add up with the weights; two فله drops stay فله.
+  const boxes = (existing?.packCount ?? 0) + (packs ?? 0);
+  const merged = boxes > 0 ? boxes : null;
   const lineTotal = quantity.mul(unitPrice).toDecimalPlaces(2);
 
   await prisma.invoiceItem.upsert({
     where: { invoiceId_fruitId: { invoiceId, fruitId } },
-    create: { invoiceId, fruitId, quantity, unitPrice, lineTotal },
-    update: { quantity, unitPrice, lineTotal },
+    create: {
+      invoiceId,
+      fruitId,
+      quantity,
+      packCount: merged,
+      unitPrice,
+      lineTotal,
+    },
+    update: { quantity, packCount: merged, unitPrice, lineTotal },
   });
 
   await recalculateTotal(invoiceId);
@@ -150,8 +166,11 @@ export async function saveInvoiceItems(
   const writes: Prisma.PrismaPromise<unknown>[] = [];
 
   for (const item of items) {
-    const parsedQuantity = quantityInput.safeParse(numeric(form, `quantity_${item.id}`));
+    const parsedQuantity = quantityInput.safeParse(
+      numeric(form, `quantity_${item.id}`),
+    );
     const parsedPrice = parsePrice(priceNumeric(form, `price_${item.id}`));
+    const packs = packCount(form, `packCount_${item.id}`);
 
     if (!parsedQuantity.success) {
       errors[`quantity_${item.id}`] = parsedQuantity.error.issues[0].message;
@@ -168,6 +187,7 @@ export async function saveInvoiceItems(
         where: { id: item.id },
         data: {
           quantity,
+          packCount: packs,
           unitPrice,
           lineTotal: quantity.mul(unitPrice).toDecimalPlaces(2),
         },

@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/buttons";
 import { PriceInput } from "@/components/price-input";
 import { money } from "@/lib/format";
 import { btnPrimaryLarge, fieldError, inputLarge, label } from "@/lib/ui";
-import { emptyState } from "@/lib/validation";
+import { PACK_COUNT_OPTIONS, emptyState } from "@/lib/validation";
 
 export type FruitOption = {
   id: string;
@@ -21,7 +21,13 @@ export type FruitOption = {
 /** Prices always end in three zeros, so the field starts holding them. */
 const RESTING_PRICE = "000";
 
-const EMPTY_FIELDS = { fruitId: "", quantity: "", price: RESTING_PRICE };
+/** "" is فله — the fruit came loose, in no box at all. */
+const EMPTY_FIELDS = {
+  fruitId: "",
+  packCount: "",
+  quantity: "",
+  price: RESTING_PRICE,
+};
 
 export function AddItemForm({
   invoiceId,
@@ -54,30 +60,53 @@ export function AddItemForm({
 
   return (
     <form action={formAction} className="grid gap-3">
-      <div>
-        <label className={label} htmlFor="fruitId">
-          میوه
-        </label>
-        <select
-          id="fruitId"
-          name="fruitId"
-          ref={fruitRef}
-          className={inputLarge}
-          value={fields.fruitId}
-          onChange={(event) => set("fruitId", event.target.value)}
-        >
-          <option value="" disabled>
-            انتخاب میوه…
-          </option>
-          {fruits.map((fruit) => (
-            <option key={fruit.id} value={fruit.id}>
-              {fruit.name}
+      {/* Which fruit, and how many boxes it came in. */}
+      <div className="grid grid-cols-[1fr_7rem] gap-3">
+        <div>
+          <label className={label} htmlFor="fruitId">
+            میوه
+          </label>
+          <select
+            id="fruitId"
+            name="fruitId"
+            ref={fruitRef}
+            className={inputLarge}
+            value={fields.fruitId}
+            onChange={(event) => set("fruitId", event.target.value)}
+          >
+            <option value="" disabled>
+              انتخاب میوه…
             </option>
-          ))}
-        </select>
-        {state.fieldErrors?.fruitId ? (
-          <p className={fieldError}>{state.fieldErrors.fruitId}</p>
-        ) : null}
+            {fruits.map((fruit) => (
+              <option key={fruit.id} value={fruit.id}>
+                {fruit.name}
+              </option>
+            ))}
+          </select>
+          {state.fieldErrors?.fruitId ? (
+            <p className={fieldError}>{state.fieldErrors.fruitId}</p>
+          ) : null}
+        </div>
+
+        <div>
+          <label className={label} htmlFor="packCount">
+            تعداد
+          </label>
+          <select
+            id="packCount"
+            name="packCount"
+            className={inputLarge}
+            value={fields.packCount}
+            onChange={(event) => set("packCount", event.target.value)}
+          >
+            <option value="">فله</option>
+            {PACK_COUNT_OPTIONS.map((count) => (
+              <option key={count} value={count}>
+                {count}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

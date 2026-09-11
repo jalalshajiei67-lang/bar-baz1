@@ -71,7 +71,10 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
 }
 
 export const customerInput = z.object({
-  name: z.string().min(1, "نام مشتری الزامی است").max(120, "نام خیلی طولانی است"),
+  name: z
+    .string()
+    .min(1, "نام مشتری الزامی است")
+    .max(120, "نام خیلی طولانی است"),
   address: z.string().max(300, "آدرس خیلی طولانی است").nullable(),
   phone: z.string().max(40, "شماره تماس معتبر نیست").nullable(),
   note: z.string().max(500, "توضیح خیلی طولانی است").nullable(),
@@ -99,3 +102,23 @@ export const quantityInput = z
   .string()
   .regex(/^\d{1,7}(\.\d{1,3})?$/, "وزن معتبر نیست (مثلاً ۳.۱۲۳)")
   .refine((v) => Number(v) > 0, "وزن باید بزرگ‌تر از صفر باشد");
+
+/**
+ * Boxes/packs a line came in. The dropdown tops out at this many; an empty
+ * value is "فله" — loose fruit that arrived in no box at all — and stores null.
+ */
+export const MAX_PACK_COUNT = 20;
+
+export const PACK_COUNT_OPTIONS = Array.from(
+  { length: MAX_PACK_COUNT },
+  (_, index) => index + 1,
+);
+
+/** FormData value -> 1..20, or null for فله and anything unusable. */
+export function packCount(form: FormData, key: string): number | null {
+  const value = numeric(form, key);
+  if (value === "") return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_PACK_COUNT) return null;
+  return n;
+}

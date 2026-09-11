@@ -8,7 +8,11 @@ import { ConfirmButton, SubmitButton } from "@/components/buttons";
 import { PriceInput } from "@/components/price-input";
 import { money } from "@/lib/format";
 import { btnPrimaryLarge, fieldError, inputLarge, label } from "@/lib/ui";
-import { emptyState, normalizeDigits } from "@/lib/validation";
+import {
+  PACK_COUNT_OPTIONS,
+  emptyState,
+  normalizeDigits,
+} from "@/lib/validation";
 
 export type EditableItem = {
   id: string;
@@ -16,9 +20,14 @@ export type EditableItem = {
   /** Decimal strings, exactly as stored. */
   quantity: string;
   unitPrice: string;
+  /** Boxes this line came in; "" is فله. */
+  packCount: string;
 };
 
-type Values = Record<string, { quantity: string; price: string }>;
+type Values = Record<
+  string,
+  { quantity: string; price: string; packCount: string }
+>;
 
 /** Prices always end in three zeros, so an unpriced row rests holding them. */
 const RESTING_PRICE = "000";
@@ -29,6 +38,7 @@ function initialValues(items: EditableItem[]): Values {
       item.id,
       {
         quantity: item.quantity,
+        packCount: item.packCount,
         // A stored 0 means "not agreed yet", so the row falls back to "000".
         price:
           Number(item.unitPrice) > 0
@@ -58,7 +68,10 @@ export function ItemsEditor({
 
   // Re-sync whenever the saved rows actually change — a save, or a deleted row.
   const signature = items
-    .map((item) => `${item.id}:${item.quantity}:${item.unitPrice}`)
+    .map(
+      (item) =>
+        `${item.id}:${item.quantity}:${item.unitPrice}:${item.packCount}`,
+    )
     .join("|");
   const [syncedSignature, setSyncedSignature] = useState(signature);
   if (signature !== syncedSignature) {
@@ -66,7 +79,11 @@ export function ItemsEditor({
     setValues(initialValues(items));
   }
 
-  function set(id: string, field: "quantity" | "price", value: string) {
+  function set(
+    id: string,
+    field: "quantity" | "price" | "packCount",
+    value: string,
+  ) {
     setValues((previous) => ({
       ...previous,
       [id]: { ...previous[id], [field]: value },
@@ -74,7 +91,7 @@ export function ItemsEditor({
   }
 
   const lineTotals = items.map((item) => {
-    const row = values[item.id] ?? { quantity: "", price: "" };
+    const row = values[item.id] ?? { quantity: "", price: "", packCount: "" };
     return toNumber(row.quantity) * toNumber(row.price);
   });
   const liveTotal = lineTotals.reduce((sum, line) => sum + line, 0);
@@ -84,7 +101,8 @@ export function ItemsEditor({
     const row = values[item.id];
     return (
       row?.quantity !== saved[item.id].quantity ||
-      row?.price !== saved[item.id].price
+      row?.price !== saved[item.id].price ||
+      row?.packCount !== saved[item.id].packCount
     );
   });
   const unpriced = items.filter(
@@ -116,7 +134,29 @@ export function ItemsEditor({
               </ConfirmButton>
             </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-[4.5rem_1fr_1fr] gap-2">
+              <div>
+                <label className={label} htmlFor={`packCount_${item.id}`}>
+                  تعداد
+                </label>
+                <select
+                  id={`packCount_${item.id}`}
+                  name={`packCount_${item.id}`}
+                  className={inputLarge}
+                  value={values[item.id]?.packCount ?? ""}
+                  onChange={(event) =>
+                    set(item.id, "packCount", event.target.value)
+                  }
+                >
+                  <option value="">فله</option>
+                  {PACK_COUNT_OPTIONS.map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className={label} htmlFor={`quantity_${item.id}`}>
                   وزن (کیلوگرم)
