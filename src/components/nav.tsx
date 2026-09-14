@@ -7,11 +7,26 @@ const links = [
   { href: "/", label: "خانه" },
   { href: "/customers", label: "مشتری‌ها" },
   { href: "/fruits", label: "میوه‌ها" },
+  { href: "/fleets", label: "ناوگان" },
   { href: "/invoices", label: "فاکتورها" },
+  { href: "/finance", label: "مالی" },
 ];
+
+/**
+ * The driver's screens. Note these are `/fleet/…` while the admin's management
+ * screen is `/fleets` — close enough to confuse a prefix check, so this matches
+ * the bare path and the slash explicitly rather than the shared prefix.
+ */
+function isFleetScreen(pathname: string): boolean {
+  return pathname === "/fleet" || pathname.startsWith("/fleet/");
+}
 
 export function Nav() {
   const pathname = usePathname();
+
+  // A driver holding a phone at a shop door has no business in the admin
+  // screens, and the row of links is only in the way there.
+  if (isFleetScreen(pathname)) return null;
 
   return (
     <header className="sticky top-0 z-[500] border-b border-black/10 bg-white/85 backdrop-blur print:hidden dark:border-white/10 dark:bg-black/70">

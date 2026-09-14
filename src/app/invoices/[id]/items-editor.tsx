@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 
-import { deleteInvoiceItem, saveInvoiceItems } from "@/app/actions/invoices";
+import { deleteInvoiceItem } from "@/app/actions/invoices";
 import { Banner } from "@/components/banner";
 import { ConfirmButton, SubmitButton } from "@/components/buttons";
 import { PriceInput } from "@/components/price-input";
@@ -12,6 +12,7 @@ import {
   PACK_COUNT_OPTIONS,
   emptyState,
   normalizeDigits,
+  type ActionState,
 } from "@/lib/validation";
 
 export type EditableItem = {
@@ -22,6 +23,10 @@ export type EditableItem = {
   unitPrice: string;
   /** Boxes this line came in; "" is فله. */
   packCount: string;
+  /** Last price agreed for this fruit, "" when there is none yet. */
+  lastPrice?: string;
+  /** Where that price comes from, e.g. "این مشتری · ۱۴۰۵/۰۶/۱۵". */
+  lastPriceNote?: string | null;
 };
 
 type Values = Record<
@@ -32,12 +37,17 @@ type Values = Record<
 /** Prices always end in three zeros, so an unpriced row rests holding them. */
 const RESTING_PRICE = "000";
 
+/** A weight of 0 means "not weighed yet", so the field shows empty, not "0". */
+function initialQuantity(stored: string): string {
+  return Number(stored) > 0 ? stored : "";
+}
+
 function initialValues(items: EditableItem[]): Values {
   return Object.fromEntries(
     items.map((item) => [
       item.id,
       {
-        quantity: item.quantity,
+        quantity: initialQuantity(item.quantity),
         packCount: item.packCount,
         // A stored 0 means "not agreed yet", so the row falls back to "000".
         price:
@@ -56,13 +66,26 @@ function toNumber(value: string): number {
 }
 
 export function ItemsEditor({
-  invoiceId,
   items,
+  action,
+  submitLabel,
+  pendingLabel,
+  returnTo,
+  lockPacks = false,
+  extra,
 }: {
-  invoiceId: string;
   items: EditableItem[];
+  /** Server action, already bound to the invoice. */
+  action: (prev: ActionState, form: FormData) => Promise<ActionState>;
+  submitLabel: string;
+  pendingLabel: string;
+  /** Where deleting a line should land. Defaults to the admin invoice page. */
+  returnTo?: string;
+  /** The fleet carries the boxes the admin counted, so it cannot change them. */
+  lockPacks?: boolean;
+  /** Extra controls in the sticky footer, above the submit button. */
+  extra?: ReactNode;
 }) {
-  const action = saveInvoiceItems.bind(null, invoiceId);
   const [state, formAction] = useActionState(action, emptyState);
   const [values, setValues] = useState<Values>(() => initialValues(items));
 
@@ -108,6 +131,9 @@ export function ItemsEditor({
   const unpriced = items.filter(
     (item) => toNumber(values[item.id]?.price ?? "") <= 0,
   ).length;
+  const unweighed = items.filter(
+    (item) => toNumber(values[item.id]?.quantity ?? "") <= 0,
+  ).length;
 
   return (
     <form action={formAction} className="print:hidden">
@@ -127,7 +153,7 @@ export function ItemsEditor({
               <span className="text-base font-medium">{item.name}</span>
               <ConfirmButton
                 message={`ردیف «${item.name}» حذف شود؟`}
-                formAction={deleteInvoiceItem.bind(null, item.id)}
+                formAction={deleteInvoiceItem.bind(null, item.id, returnTo)}
                 className="-me-1 rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 dark:text-red-400"
               >
                 حذف
@@ -142,8 +168,9 @@ export function ItemsEditor({
                 <select
                   id={`packCount_${item.id}`}
                   name={`packCount_${item.id}`}
-                  className={inputLarge}
+                  className={`${inputLarge} ${lockPacks ? "opacity-100" : ""}`}
                   value={values[item.id]?.packCount ?? ""}
+                  disabled={lockPacks}
                   onChange={(event) =>
                     set(item.id, "packCount", event.target.value)
                   }
@@ -165,6 +192,7 @@ export function ItemsEditor({
                   id={`quantity_${item.id}`}
                   name={`quantity_${item.id}`}
                   className={`${inputLarge} tabular-nums`}
+                  placeholder="۳٫۱۲۳"
                   value={values[item.id]?.quantity ?? ""}
                   onChange={(event) =>
                     set(item.id, "quantity", event.target.value)
@@ -199,6 +227,19 @@ export function ItemsEditor({
               </div>
             </div>
 
+            {item.lastPrice ? (
+              <button
+                type="button"
+                onClick={() => set(item.id, "price", item.lastPrice!)}
+                className="mt-2 rounded-lg bg-black/5 px-3 py-1.5 text-xs dark:bg-white/10"
+              >
+                آخرین قیمت: {money(item.lastPrice)}
+                {item.lastPriceNote ? (
+                  <span className="opacity-60"> · {item.lastPriceNote}</span>
+                ) : null}
+              </button>
+            ) : null}
+
             <div className="mt-2 flex items-baseline justify-between border-t border-black/5 pt-2 text-sm dark:border-white/10">
               <span className="opacity-60">مبلغ ردیف</span>
               <span className="font-semibold tabular-nums">
@@ -228,10 +269,17 @@ export function ItemsEditor({
           </span>
         </div>
 
-        <SubmitButton className={btnPrimaryLarge} pendingLabel="در حال ذخیره…">
-          ذخیره وزن‌ها و قیمت‌ها
+        {extra}
+
+        <SubmitButton className={btnPrimaryLarge} pendingLabel={pendingLabel}>
+          {submitLabel}
         </SubmitButton>
 
+        {unweighed > 0 ? (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            {unweighed} ردیف هنوز وزن ندارد.
+          </p>
+        ) : null}
         {unpriced > 0 ? (
           <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
             {unpriced} ردیف هنوز قیمت ندارد.

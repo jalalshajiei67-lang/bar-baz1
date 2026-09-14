@@ -4,31 +4,22 @@ import { useActionState, useEffect, useRef, useState } from "react";
 
 import { addInvoiceItem } from "@/app/actions/invoices";
 import { SubmitButton } from "@/components/buttons";
-import { PriceInput } from "@/components/price-input";
-import { money } from "@/lib/format";
 import { btnPrimaryLarge, fieldError, inputLarge, label } from "@/lib/ui";
 import { PACK_COUNT_OPTIONS, emptyState } from "@/lib/validation";
 
 export type FruitOption = {
   id: string;
   name: string;
-  /** Last price agreed for this fruit, "" when there is none yet. */
-  lastPrice: string;
-  /** Where that price comes from, e.g. "این مشتری · ۱۴۰۵/۰۶/۱۵". */
-  lastPriceNote: string | null;
 };
 
-/** Prices always end in three zeros, so the field starts holding them. */
-const RESTING_PRICE = "000";
+/** "" is فله — the fruit goes out loose, in no box at all. */
+const EMPTY_FIELDS = { fruitId: "", packCount: "" };
 
-/** "" is فله — the fruit came loose, in no box at all. */
-const EMPTY_FIELDS = {
-  fruitId: "",
-  packCount: "",
-  quantity: "",
-  price: RESTING_PRICE,
-};
-
+/**
+ * The admin's half of a line: which fruit goes on the truck and how many boxes
+ * of it. Weight and price are missing on purpose — the fleet weighs the boxes
+ * at the shop and bargains the price there.
+ */
 export function AddItemForm({
   invoiceId,
   fruits,
@@ -52,15 +43,12 @@ export function AddItemForm({
     if (state.ok) fruitRef.current?.focus();
   }, [state]);
 
-  const selected = fruits.find((fruit) => fruit.id === fields.fruitId);
-
   function set(field: keyof typeof EMPTY_FIELDS, value: string) {
     setFields((previous) => ({ ...previous, [field]: value }));
   }
 
   return (
     <form action={formAction} className="grid gap-3">
-      {/* Which fruit, and how many boxes it came in. */}
       <div className="grid grid-cols-[1fr_7rem] gap-3">
         <div>
           <label className={label} htmlFor="fruitId">
@@ -109,64 +97,13 @@ export function AddItemForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={label} htmlFor="quantity">
-            وزن (کیلوگرم)
-          </label>
-          <input
-            id="quantity"
-            name="quantity"
-            className={`${inputLarge} tabular-nums`}
-            placeholder="۳٫۱۲۳"
-            inputMode="decimal"
-            dir="ltr"
-            autoComplete="off"
-            value={fields.quantity}
-            onChange={(event) => set("quantity", event.target.value)}
-          />
-          {state.fieldErrors?.quantity ? (
-            <p className={fieldError}>{state.fieldErrors.quantity}</p>
-          ) : null}
-        </div>
-
-        <div>
-          <label className={label} htmlFor="unitPrice">
-            قیمت هر کیلو
-          </label>
-          <PriceInput
-            id="unitPrice"
-            name="unitPrice"
-            className={`${inputLarge} tabular-nums`}
-            value={fields.price}
-            onValueChange={(digits) => set("price", digits)}
-          />
-          {state.fieldErrors?.unitPrice ? (
-            <p className={fieldError}>{state.fieldErrors.unitPrice}</p>
-          ) : null}
-        </div>
-      </div>
-
-      {selected?.lastPrice ? (
-        <button
-          type="button"
-          onClick={() => set("price", selected.lastPrice)}
-          className="justify-self-start rounded-lg bg-black/5 px-3 py-1.5 text-xs dark:bg-white/10"
-        >
-          آخرین قیمت: {money(selected.lastPrice)}
-          {selected.lastPriceNote ? (
-            <span className="opacity-60"> · {selected.lastPriceNote}</span>
-          ) : null}
-        </button>
-      ) : null}
-
       <SubmitButton className={btnPrimaryLarge} pendingLabel="در حال افزودن…">
-        افزودن به فاکتور
+        افزودن به بار
       </SubmitButton>
 
       <p className="text-xs opacity-50">
-        سه صفر آخر قیمت از پیش نوشته شده؛ فقط رقم‌های اولش را بزنید. اگر هنوز
-        توافق نشده، ۰۰۰ را دست‌نخورده بگذارید.
+        فقط میوه و تعداد جعبه را مشخص کنید. وزن و قیمت را ناوگان سر بار وارد
+        می‌کند.
       </p>
     </form>
   );

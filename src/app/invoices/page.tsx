@@ -1,15 +1,11 @@
 import Link from "next/link";
 
-import { payAllUnpaidInvoices } from "@/app/actions/invoices";
-import { ConfirmButton } from "@/components/buttons";
 import { JalaliDatePicker } from "@/components/jalali-date-picker";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
   faDay,
-  faDayShort,
   faMonth,
-  isoDay,
   kg,
   money,
   normalizeDay,
@@ -17,18 +13,14 @@ import {
   todayISO,
 } from "@/lib/format";
 import { fromJalali, toJalali } from "@/lib/jalali";
-import { btnGhost, btnPrimary, card, rowBorder, td, th } from "@/lib/ui";
+import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
 
 import { NewInvoiceForm } from "./new-invoice-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function InvoicesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ day?: string }>;
-}) {
-  const day = normalizeDay((await searchParams).day);
+export default async function InvoicesPage(props: PageProps<"/invoices">) {
+  const day = normalizeDay((await props.searchParams).day);
   const today = todayISO();
 
   const jalaliMonth = toJalali(dayToDate(day));
@@ -39,12 +31,14 @@ export default async function InvoicesPage({
       : { year: jalaliMonth.year, month: jalaliMonth.month + 1, day: 1 },
   );
 
-  const [invoices, customers, unpaidInvoices, monthItems] = await Promise.all([
+  const [invoices, customers, fleets, unpaidInvoices, monthItems] =
+    await Promise.all([
     prisma.invoice.findMany({
       where: { day: dayToDate(day) },
       orderBy: { createdAt: "asc" },
       include: {
         customer: { select: { name: true } },
+        fleet: { select: { name: true } },
         _count: { select: { items: true } },
       },
     }),
@@ -52,10 +46,20 @@ export default async function InvoicesPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.fleet.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
     prisma.invoice.findMany({
       where: { paid: false, status: "FINAL" },
       orderBy: { day: "desc" },
-      include: { customer: { select: { id: true, name: true } } },
+      select: {
+        customerId: true,
+        total: true,
+        paidAmount: true,
+        customer: { select: { name: true } },
+      },
     }),
     prisma.invoiceItem.findMany({
       where: {
@@ -76,12 +80,15 @@ export default async function InvoicesPage({
       name: invoice.customer.name,
       total: 0,
     };
-    entry.total += Number(invoice.total);
+    // Part-payments taken on /finance have already come off this invoice.
+    entry.total += Math.max(Number(invoice.total) - Number(invoice.paidAmount), 0);
     debtByCustomer.set(invoice.customerId, entry);
   }
   const debtors = [...debtByCustomer.entries()]
     .map(([customerId, entry]) => ({ customerId, ...entry }))
+    .filter((debtor) => debtor.total > 0)
     .sort((a, b) => b.total - a.total);
+  const debtTotal = debtors.reduce((sum, debtor) => sum + debtor.total, 0);
 
   const fruitTotals = new Map<string, { name: string; total: number }>();
   for (const item of monthItems) {
@@ -125,31 +132,33 @@ export default async function InvoicesPage({
             </Link>{" "}
             یک مشتری اضافه کنید.
           </p>
+        ) : fleets.length === 0 ? (
+          <p className="text-sm opacity-60">
+            ابتدا در صفحه‌ی{" "}
+            <Link href="/fleets" className="underline">
+              ناوگان
+            </Link>{" "}
+            ماشین‌هایتان را اضافه کنید.
+          </p>
         ) : (
-          <NewInvoiceForm day={day} customers={customers} />
+          <NewInvoiceForm day={day} customers={customers} fleets={fleets} />
         )}
       </div>
 
-      {unpaidInvoices.length > 0 ? (
+      {debtors.length > 0 ? (
         <div className={`${card} mb-6 p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">بدهکاران</h2>
-            <form action={payAllUnpaidInvoices}>
-              <input type="hidden" name="day" value={day} />
-              <ConfirmButton
-                message="همه‌ی فاکتورهای پرداخت‌نشده به‌عنوان پرداخت‌شده علامت بخورند؟"
-                className={btnPrimary}
-              >
-                تایید پرداخت همه
-              </ConfirmButton>
-            </form>
+            <Link href="/finance" className={`${btnGhost} text-xs`}>
+              مدیریت پرداخت‌ها
+            </Link>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[20rem] text-sm">
               <thead>
                 <tr>
                   <th className={th}>مشتری</th>
-                  <th className={th}>بدهی (تومان)</th>
+                  <th className={th}>مانده (تومان)</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,52 +166,21 @@ export default async function InvoicesPage({
                   <tr key={debtor.customerId} className={rowBorder}>
                     <td className={`${td} font-medium`}>{debtor.name}</td>
                     <td
-                      className={`${td} font-semibold text-red-600 dark:text-red-400`}
+                      className={`${td} font-semibold tabular-nums text-red-600 dark:text-red-400`}
                     >
                       {money(debtor.total)}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
-
-          <h3 className="mt-5 text-sm font-semibold">
-            فاکتورهای پرداخت‌نشده
-          </h3>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm">
-              <thead>
-                <tr>
-                  <th className={th}>مشتری</th>
-                  <th className={th}>تاریخ</th>
-                  <th className={th}>مبلغ (تومان)</th>
-                  <th className={th} />
+              <tfoot>
+                <tr className={rowBorder}>
+                  <td className={`${td} opacity-60`}>جمع کل</td>
+                  <td className={`${td} font-semibold tabular-nums`}>
+                    {money(debtTotal)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {unpaidInvoices.map((invoice) => (
-                  <tr key={invoice.id} className={rowBorder}>
-                    <td className={`${td} font-medium`}>
-                      {invoice.customer.name}
-                    </td>
-                    <td className={`${td} opacity-70`}>
-                      {faDayShort(isoDay(invoice.day))}
-                    </td>
-                    <td className={`${td} font-medium`}>
-                      {money(invoice.total)}
-                    </td>
-                    <td className={`${td} text-end`}>
-                      <Link
-                        href={`/invoices/${invoice.id}`}
-                        className="text-xs underline"
-                      >
-                        مشاهده
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -218,6 +196,7 @@ export default async function InvoicesPage({
             <thead>
               <tr>
                 <th className={th}>مشتری</th>
+                <th className={th}>ناوگان</th>
                 <th className={th}>ردیف</th>
                 <th className={th}>وضعیت</th>
                 <th className={th}>مبلغ (تومان)</th>
@@ -233,6 +212,9 @@ export default async function InvoicesPage({
                     >
                       {invoice.customer.name}
                     </Link>
+                  </td>
+                  <td className={`${td} opacity-70`}>
+                    {invoice.fleet?.name ?? "—"}
                   </td>
                   <td className={`${td} opacity-70`}>{invoice._count.items}</td>
                   <td className={td}>
@@ -252,7 +234,7 @@ export default async function InvoicesPage({
             </tbody>
             <tfoot>
               <tr className={rowBorder}>
-                <td className={`${td} opacity-60`} colSpan={3}>
+                <td className={`${td} opacity-60`} colSpan={4}>
                   جمع کل روز
                 </td>
                 <td className={`${td} font-semibold`}>{money(dayTotal)}</td>

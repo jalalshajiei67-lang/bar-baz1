@@ -43,6 +43,7 @@ export function PriceInput({
   onValueChange,
   className,
   ariaLabel,
+  placeholder = "توافقی",
 }: {
   id?: string;
   name: string;
@@ -50,6 +51,8 @@ export function PriceInput({
   onValueChange: (digits: string) => void;
   className?: string;
   ariaLabel?: string;
+  /** A price is "توافقی" until it is bargained; a payment is just a number. */
+  placeholder?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const caret = useRef<number | null>(null);
@@ -96,7 +99,7 @@ export function PriceInput({
       value={groupDigits(value)}
       onChange={handleChange}
       onFocus={handleFocus}
-      placeholder="توافقی"
+      placeholder={placeholder}
       inputMode="numeric"
       dir="ltr"
       autoComplete="off"

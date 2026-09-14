@@ -3,13 +3,14 @@ import { notFound } from "next/navigation";
 
 import {
   deleteInvoice,
+  saveInvoiceItems,
   setInvoicePaid,
   setInvoiceStatus,
 } from "@/app/actions/invoices";
 import { Banner } from "@/components/banner";
 import { ConfirmButton, PrintButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
-import { faDay, faDayShort, isoDay, kg, money } from "@/lib/format";
+import { faDay, isoDay, kg, money } from "@/lib/format";
 import { btnGhost, btnPrimary, card, rowBorder, td, th } from "@/lib/ui";
 
 import { AddItemForm, type FruitOption } from "./add-item-form";
@@ -17,44 +18,15 @@ import { ItemsEditor, type EditableItem } from "./items-editor";
 
 export const dynamic = "force-dynamic";
 
-/** How many past lines to scan when looking up a fruit's last agreed price. */
-const HISTORY_LIMIT = 400;
-
-type PriceHistoryRow = {
-  fruitId: string;
-  unitPrice: { toString(): string };
-  invoice: { day: Date };
-};
-
-/** Rows arrive newest-first, so the first hit per fruit is the latest price. */
-function latestPerFruit(rows: PriceHistoryRow[]) {
-  const latest = new Map<string, { price: string; day: string }>();
-  for (const row of rows) {
-    if (!latest.has(row.fruitId)) {
-      latest.set(row.fruitId, {
-        // Bare digits: the price field groups them for display itself.
-        price: String(Math.round(Number(row.unitPrice.toString()))),
-        day: isoDay(row.invoice.day),
-      });
-    }
-  }
-  return latest;
-}
-
-export default async function InvoicePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const { id } = await params;
-  const { error } = await searchParams;
+export default async function InvoicePage(props: PageProps<"/invoices/[id]">) {
+  const { id } = await props.params;
+  const { error } = await props.searchParams;
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
     include: {
       customer: true,
+      fleet: { select: { id: true, name: true } },
       items: {
         orderBy: { createdAt: "asc" },
         include: { fruit: { select: { name: true } } },
@@ -67,55 +39,21 @@ export default async function InvoicePage({
   const day = isoDay(invoice.day);
   const isDraft = invoice.status === "DRAFT";
 
-  // Prices are bargained per customer, so the useful hint is what this shop
-  // paid last; anyone else's last price is only a fallback for a new fruit.
-  const [activeFruits, customerPrices, anyPrices] = await Promise.all([
-    prisma.fruit.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    prisma.invoiceItem.findMany({
-      where: {
-        unitPrice: { gt: 0 },
-        invoiceId: { not: invoice.id },
-        invoice: { customerId: invoice.customerId },
-      },
-      orderBy: [{ invoice: { day: "desc" } }, { createdAt: "desc" }],
-      take: HISTORY_LIMIT,
-      select: {
-        fruitId: true,
-        unitPrice: true,
-        invoice: { select: { day: true } },
-      },
-    }),
-    prisma.invoiceItem.findMany({
-      where: { unitPrice: { gt: 0 }, invoiceId: { not: invoice.id } },
-      orderBy: [{ invoice: { day: "desc" } }, { createdAt: "desc" }],
-      take: HISTORY_LIMIT,
-      select: {
-        fruitId: true,
-        unitPrice: true,
-        invoice: { select: { day: true } },
-      },
-    }),
-  ]);
+  // A payment on /finance can cover part of an invoice: the two buttons below
+  // only know paid/unpaid, so the amount already handed over is spelled out.
+  const remaining = Math.max(
+    Number(invoice.total) - Number(invoice.paidAmount),
+    0,
+  );
+  const partlyPaid = !invoice.paid && Number(invoice.paidAmount) > 0;
 
-  const byCustomer = latestPerFruit(customerPrices);
-  const byAnyone = latestPerFruit(anyPrices);
-
-  const fruits: FruitOption[] = activeFruits.map((fruit) => {
-    const mine = byCustomer.get(fruit.id);
-    const last = mine ?? byAnyone.get(fruit.id);
-    return {
-      id: fruit.id,
-      name: fruit.name,
-      lastPrice: last?.price ?? "",
-      lastPriceNote: last
-        ? `${mine ? "همین مشتری" : "فاکتور دیگر"} · ${faDayShort(last.day)}`
-        : null,
-    };
+  const activeFruits = await prisma.fruit.findMany({
+    where: { active: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
   });
+
+  const fruits: FruitOption[] = activeFruits;
 
   const editableItems: EditableItem[] = invoice.items.map((item) => ({
     id: item.id,
@@ -156,7 +94,11 @@ export default async function InvoicePage({
                   )}
                 </td>
                 <td className={`${td} whitespace-nowrap tabular-nums`}>
-                  {kg(item.quantity)}
+                  {Number(item.quantity) > 0 ? (
+                    kg(item.quantity)
+                  ) : (
+                    <span className="opacity-50">—</span>
+                  )}
                 </td>
                 <td className={`${td} whitespace-nowrap tabular-nums`}>
                   {Number(item.unitPrice) > 0 ? (
@@ -191,6 +133,19 @@ export default async function InvoicePage({
               {invoice.customer.address}
             </p>
           ) : null}
+          <p className="mt-1 text-sm">
+            <span className="opacity-60">ناوگان: </span>
+            {invoice.fleet ? (
+              <Link
+                href={`/fleet/${invoice.fleet.id}?day=${day}`}
+                className="font-medium underline print:no-underline"
+              >
+                {invoice.fleet.name}
+              </Link>
+            ) : (
+              <span className="opacity-60">تعیین نشده</span>
+            )}
+          </p>
         </div>
 
         <span
@@ -214,7 +169,7 @@ export default async function InvoicePage({
             value={isDraft ? "FINAL" : "DRAFT"}
           />
           <button type="submit" className={isDraft ? btnPrimary : btnGhost}>
-            {isDraft ? "ذخیره" : "بازگرداندن به پیش‌نویس"}
+            {isDraft ? "نهایی کردن" : "بازگرداندن به پیش‌نویس"}
           </button>
         </form>
         <form action={deleteInvoice} className="ms-auto">
@@ -254,7 +209,12 @@ export default async function InvoicePage({
             </div>
           ) : (
             <div className="mt-5">
-              <ItemsEditor invoiceId={invoice.id} items={editableItems} />
+              <ItemsEditor
+                items={editableItems}
+                action={saveInvoiceItems.bind(null, invoice.id)}
+                submitLabel="ذخیره وزن‌ها و قیمت‌ها"
+                pendingLabel="در حال ذخیره…"
+              />
             </div>
           )}
 
@@ -275,6 +235,17 @@ export default async function InvoicePage({
           <span className="text-sm font-normal opacity-70">تومان</span>
         </span>
       </div>
+
+      {partlyPaid ? (
+        <div className="mt-2 flex items-center justify-between rounded-xl bg-amber-500/10 px-4 py-3 text-sm">
+          <span>
+            {money(invoice.paidAmount)} تومان از این فاکتور پرداخت شده است
+          </span>
+          <span className="font-semibold tabular-nums text-red-600 dark:text-red-400">
+            مانده {money(remaining)}
+          </span>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-3 print:hidden">
         <form action={setInvoicePaid}>
@@ -310,8 +281,8 @@ export default async function InvoicePage({
       </div>
 
       <p className="mt-6 text-xs opacity-50 print:hidden">
-        قیمت هر ردیف همان چیزی است که با این مشتری توافق شده و روی فاکتور ذخیره
-        می‌شود؛ فاکتورهای دیگر با آن عوض نمی‌شوند.
+        این صفحه‌ی ادمین است: میوه‌ها و تعداد جعبه‌ها را اینجا مشخص کنید. وزن،
+        قیمت و پرداخت را ناوگان سر بار ثبت می‌کند.
       </p>
     </main>
   );

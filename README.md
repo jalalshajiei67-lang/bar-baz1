@@ -1,8 +1,12 @@
 # Bar-Baz — daily fruit invoices
 
 Small app for a fruit distribution business selling to pastry shops.
-Manage customers, keep a daily price list per fruit, and build a daily
-invoice per customer.
+
+The work is split between two people. An **admin** builds each invoice before
+the load leaves — customer, fruits, how many boxes of each, and which of the
+vehicles carries it. The **fleet** driver then weighs the boxes at the shop,
+writes the weight and the price bargained on the spot, marks paid or unpaid,
+and commits the lot with one button.
 
 ## Stack
 
@@ -18,17 +22,33 @@ invoice per customer.
 
 ## Screens
 
+Admin screens:
+
 | Route            | What it does                                                          |
 | ---------------- | --------------------------------------------------------------------- |
 | `/customers`     | List, search, add, edit and delete customers                          |
 | `/customers/new` | New customer, with a Tehran map (click or drag the pin to set a spot) |
 | `/fruits`        | Add, rename, deactivate and delete fruits                             |
-| `/prices`        | One day's price list; step through days, prefill from the last price  |
+| `/fleets`        | Add, rename, deactivate and delete the vehicles                       |
 | `/invoices`      | Invoices for a day, plus the day's grand total                        |
-| `/invoices/[id]` | Add lines (kg with 3 decimals), edit, finalize, print                 |
+| `/invoices/[id]` | Build the load: fruits and box counts. Finalize, print, delete        |
 
-The daily loop: enter prices on `/prices` → open the customer's invoice on
-`/invoices` → add each fruit with its weight → read the total off the invoice.
+Fleet screens, opened on the driver's phone:
+
+| Route                          | What it does                                        |
+| ------------------------------ | --------------------------------------------------- |
+| `/fleet`                       | One-time picker; the driver bookmarks what it opens |
+| `/fleet/[fleetId]`             | That vehicle's round for a day                      |
+| `/fleet/[fleetId]/[invoiceId]` | Weigh, price, paid/unpaid, one button to commit     |
+
+Note `/fleets` (admin) and `/fleet/…` (driver) differ by one letter.
+
+The daily loop: admin opens `/invoices`, picks the customer and the vehicle →
+adds each fruit and how many boxes of it → the driver opens `/fleet/[fleetId]`,
+taps a shop, fills in weight and price, answers paid or unpaid, and submits.
+
+There is no login. The two sets of URLs separate the two jobs; they do not
+guard them.
 
 Persian and Arabic digits are accepted everywhere a number is typed, so `۳٫۱۲۳`
 and `3.123` both work.
@@ -37,12 +57,19 @@ and `3.123` both work.
 
 - **Customer** — name, optional address, `lat`/`lng` picked on the map.
 - **Fruit** — name (unique), unit (kg).
-- **DailyPrice** — one price per fruit per day, unique on `(fruitId, day)`.
-  Nothing is overwritten across days, so the price history is the archive.
-- **Invoice** — one customer, one day, a status and a snapshotted total.
-- **InvoiceItem** — fruit, `quantity` (kg, 3 decimals, e.g. `3.123`),
-  `unitPrice` copied from that day's price, and `lineTotal`. Copying the price
-  onto the line means editing a price later never rewrites an old invoice.
+- **Fleet** — name (unique), `active`. One of the vehicles.
+- **Invoice** — one customer, one day, one fleet, a status and a snapshotted
+  total. `fleetId` is nullable only for invoices that predate fleets; the
+  admin's form requires one.
+- **InvoiceItem** — fruit, `packCount` (boxes, null = فله), `quantity` (kg,
+  3 decimals, e.g. `3.123`), `unitPrice` bargained with this customer, and
+  `lineTotal`. Storing the price on the line means editing a price later never
+  rewrites an old invoice.
+
+`quantity` and `unitPrice` both default to `0`, which reads as "not filled in
+yet": the admin creates a line with boxes alone, and the fleet supplies the
+rest. The admin's save tolerates those zeros; the fleet's submit refuses them,
+because handing the load over means it was weighed.
 
 Money uses `Decimal`, never `Float`.
 

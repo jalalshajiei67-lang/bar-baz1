@@ -87,6 +87,13 @@ export const fruitInput = z.object({
   unit: z.string().min(1).max(16),
 });
 
+export const fleetInput = z.object({
+  name: z
+    .string()
+    .min(1, "نام ناوگان الزامی است")
+    .max(80, "نام خیلی طولانی است"),
+});
+
 export const dayInput = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "تاریخ معتبر نیست");
@@ -96,6 +103,15 @@ export const priceInput = z
   .string()
   .regex(/^\d{1,9}(\.\d{1,2})?$/, "قیمت معتبر نیست")
   .refine((v) => Number(v) > 0, "قیمت باید بزرگ‌تر از صفر باشد");
+
+/**
+ * A payment handed over at the door, in Toman. Wider than `priceInput`: that
+ * one prices a single kilo, this one can settle a season's worth of invoices.
+ */
+export const paymentInput = z
+  .string()
+  .regex(/^\d{1,12}(\.\d{1,2})?$/, "مبلغ معتبر نیست")
+  .refine((v) => Number(v) > 0, "مبلغ باید بزرگ‌تر از صفر باشد");
 
 /** Weight in kg, up to 3 decimals — e.g. 3.123. */
 export const quantityInput = z
