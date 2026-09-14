@@ -35,20 +35,28 @@ Admin screens:
 
 Fleet screens, opened on the driver's phone:
 
-| Route                          | What it does                                        |
-| ------------------------------ | --------------------------------------------------- |
-| `/fleet`                       | One-time picker; the driver bookmarks what it opens |
-| `/fleet/[fleetId]`             | That vehicle's round for a day                      |
-| `/fleet/[fleetId]/[invoiceId]` | Weigh, price, paid/unpaid, one button to commit     |
+| Route                          | What it does                                     |
+| ------------------------------ | ------------------------------------------------ |
+| `/fleet/[fleetId]`             | Everything outstanding, then finished rounds     |
+| `/fleet/[fleetId]/[invoiceId]` | Weigh, price, paid/unpaid, one button to commit  |
 
 Note `/fleets` (admin) and `/fleet/…` (driver) differ by one letter.
 
+`/fleet/[fleetId]` opens with **everything still to weigh, whatever its date**,
+oldest first, each load labelled with its day when it is not today — a load
+dated tomorrow must not look like no load at all. Below that, a day stepper
+looks back at rounds already finished. The two sections never show the same
+invoice: one is what is left to do, the other is what is done.
+
 The daily loop: admin opens `/invoices`, picks the customer and the vehicle →
-adds each fruit and how many boxes of it → the driver opens `/fleet/[fleetId]`,
+adds each fruit and how many boxes of it → the driver opens their own page,
 taps a shop, fills in weight and price, answers paid or unpaid, and submits.
 
-There is no login. The two sets of URLs separate the two jobs; they do not
-guard them.
+There is no login. Each fleet's page is reached only by the link the admin
+copies from `/fleets` and sends once; no page lists the fleets to a driver, and
+the fleet screens link nowhere else in the app, so the nav bar is hidden there.
+The URLs separate the jobs — a hand-typed `/invoices` would still open, so this
+keeps drivers in their own lane rather than guarding against a determined one.
 
 Persian and Arabic digits are accepted everywhere a number is typed, so `۳٫۱۲۳`
 and `3.123` both work.
