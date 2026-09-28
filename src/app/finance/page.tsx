@@ -3,7 +3,7 @@ import Link from "next/link";
 import { setInvoiceSettled, settleCustomer } from "@/app/actions/payments";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
-import { faDayShort, isoDay, money, tehranDay, toNum } from "@/lib/format";
+import { faDayShort, isoDay, kg, money, tehranDay, toNum } from "@/lib/format";
 import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
 
 import { PaymentForm } from "./payment-form";
@@ -22,6 +22,16 @@ type OpenInvoice = {
   total: number;
   paidAmount: number;
   remaining: number;
+  fleetName: string | null;
+  note: string | null;
+  items: {
+    id: string;
+    fruit: string;
+    quantity: number;
+    packCount: number | null;
+    unitPrice: number;
+    lineTotal: number;
+  }[];
 };
 
 type Debtor = {
@@ -36,7 +46,21 @@ export default async function FinancePage() {
     prisma.invoice.findMany({
       where: { status: "FINAL", paid: false },
       orderBy: [{ day: "asc" }, { createdAt: "asc" }],
-      include: { customer: { select: { id: true, name: true } } },
+      include: {
+        customer: { select: { id: true, name: true } },
+        fleet: { select: { name: true } },
+        items: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            quantity: true,
+            packCount: true,
+            unitPrice: true,
+            lineTotal: true,
+            fruit: { select: { name: true } },
+          },
+        },
+      },
     }),
     // Ordered by the last write, so an invoice settled by mistake a moment ago
     // is the first one in the undo list.
@@ -69,6 +93,16 @@ export default async function FinancePage() {
       total,
       paidAmount,
       remaining,
+      fleetName: invoice.fleet?.name ?? null,
+      note: invoice.note,
+      items: invoice.items.map((item) => ({
+        id: item.id,
+        fruit: item.fruit.name,
+        quantity: toNum(item.quantity),
+        packCount: item.packCount,
+        unitPrice: toNum(item.unitPrice),
+        lineTotal: toNum(item.lineTotal),
+      })),
     });
     debtor.remaining += remaining;
     byCustomer.set(invoice.customerId, debtor);
@@ -130,36 +164,37 @@ export default async function FinancePage() {
 
               <ul className="mt-3">
                 {debtor.invoices.map((invoice) => (
-                  <li
-                    key={invoice.id}
-                    className={`${rowBorder} flex items-center gap-3 py-2`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/invoices/${invoice.id}`}
-                        className="text-sm hover:underline"
-                      >
-                        {faDayShort(invoice.day)}
-                      </Link>
-                      <p className="text-xs tabular-nums opacity-60">
-                        {money(invoice.total)}
-                        {invoice.paidAmount > 0
-                          ? ` · ${money(invoice.paidAmount)} پرداخت‌شده`
-                          : ""}
-                      </p>
+                  <li key={invoice.id} className={`${rowBorder} py-2`}>
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          href={`/invoices/${invoice.id}`}
+                          className="text-sm hover:underline"
+                        >
+                          {faDayShort(invoice.day)}
+                        </Link>
+                        <p className="text-xs tabular-nums opacity-60">
+                          {money(invoice.total)}
+                          {invoice.paidAmount > 0
+                            ? ` · ${money(invoice.paidAmount)} پرداخت‌شده`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {money(invoice.remaining)}
+                      </span>
+
+                      <form action={setInvoiceSettled} className="shrink-0">
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <input type="hidden" name="settled" value="true" />
+                        <button type="submit" className={`${btnGhost} text-xs`}>
+                          پرداخت شد ✓
+                        </button>
+                      </form>
                     </div>
 
-                    <span className="shrink-0 text-sm font-semibold tabular-nums">
-                      {money(invoice.remaining)}
-                    </span>
-
-                    <form action={setInvoiceSettled} className="shrink-0">
-                      <input type="hidden" name="id" value={invoice.id} />
-                      <input type="hidden" name="settled" value="true" />
-                      <button type="submit" className={`${btnGhost} text-xs`}>
-                        پرداخت شد ✓
-                      </button>
-                    </form>
+                    <InvoiceDetails invoice={invoice} />
                   </li>
                 ))}
               </ul>
@@ -263,5 +298,43 @@ export default async function FinancePage() {
         بماند روی فاکتورهای بعدی می‌ماند.
       </p>
     </main>
+  );
+}
+
+/** What went out on one unpaid invoice, so the debt can be read without opening it. */
+function InvoiceDetails({ invoice }: { invoice: OpenInvoice }) {
+  if (invoice.items.length === 0 && !invoice.fleetName && !invoice.note) {
+    return null;
+  }
+  return (
+    <div className="mt-1.5 rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/[0.04]">
+      {invoice.items.length > 0 ? (
+        <ul className="space-y-1">
+          {invoice.items.map((item) => (
+            <li key={item.id} className="flex items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{item.fruit}</span>
+                <span className="tabular-nums opacity-60">
+                  {" · "}
+                  {kg(item.quantity)} کیلو
+                  {" · "}
+                  {item.packCount === null ? "فله" : `${item.packCount} جعبه`}
+                  {" · "}
+                  کیلویی {money(item.unitPrice)}
+                </span>
+              </span>
+              <span className="shrink-0 tabular-nums">{money(item.lineTotal)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {invoice.fleetName || invoice.note ? (
+        <p className={`opacity-60 ${invoice.items.length > 0 ? "mt-1.5" : ""}`}>
+          {invoice.fleetName ? `ناوگان: ${invoice.fleetName}` : ""}
+          {invoice.fleetName && invoice.note ? " · " : ""}
+          {invoice.note ?? ""}
+        </p>
+      ) : null}
+    </div>
   );
 }
