@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PeriodNav } from "@/components/period-nav";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
@@ -11,10 +12,10 @@ import {
   money,
   normalizeDay,
   toNum,
-  todayISO,
 } from "@/lib/format";
-import { fromJalali, jalaliMonthLength, toJalali } from "@/lib/jalali";
-import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
+import { fromJalali, toJalali } from "@/lib/jalali";
+import { normalizePeriod, periodLabel, periodRange } from "@/lib/periods";
+import { card, rowBorder, td, th } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -25,24 +26,9 @@ type MonthGroup = {
   totalKg: number;
 };
 
-/** "YYYY-MM-DD" shifted by n Jalali months, clamped to the target month's length. */
-function shiftJalaliMonth(day: string, delta: number): string {
-  const current = toJalali(dayToDate(day));
-  let month = current.month + delta;
-  let year = current.year;
-  if (month < 1) {
-    month = 12;
-    year -= 1;
-  } else if (month > 12) {
-    month = 1;
-    year += 1;
-  }
-  const length = jalaliMonthLength(year, month);
-  return isoDay(fromJalali({ year, month, day: Math.min(current.day, length) }));
-}
-
 /**
- * A fleet's delivery history, grouped by Jalali month. The admin gets here by
+ * A fleet's delivery history: an archive for any period (all time, or a Jalali
+ * year, month, week or day) above a month-by-month summary. The admin gets here by
  * clicking a fleet's invoice count on `/fleets`; the driver's own `/fleet/[id]`
  * screen (singular) is a separate, day-based page for weighing loads.
  */
@@ -50,8 +36,10 @@ export default async function FleetHistoryPage(
   props: PageProps<"/fleets/[fleetId]">,
 ) {
   const { fleetId } = await props.params;
-  const day = normalizeDay((await props.searchParams).day);
-  const today = todayISO();
+  const searchParams = await props.searchParams;
+  const day = normalizeDay(searchParams.day);
+  const period = normalizePeriod(searchParams.period);
+  const range = periodRange(period, day);
 
   const fleet = await prisma.fleet.findUnique({
     where: { id: fleetId },
@@ -59,12 +47,11 @@ export default async function FleetHistoryPage(
   });
   if (!fleet) notFound();
 
-  const jalaliMonth = toJalali(dayToDate(day));
-  const monthStart = fromJalali({ ...jalaliMonth, day: 1 });
-  const selectedKey = `${jalaliMonth.year}-${String(jalaliMonth.month).padStart(2, "0")}`;
-  const todayJalali = toJalali(dayToDate(today));
-  const isCurrentMonth =
-    jalaliMonth.year === todayJalali.year && jalaliMonth.month === todayJalali.month;
+  const selectedJalali = toJalali(dayToDate(day));
+  const selectedKey =
+    period === "month"
+      ? `${selectedJalali.year}-${String(selectedJalali.month).padStart(2, "0")}`
+      : null;
 
   // All of this fleet's finished deliveries, ever — grouped in JS by Jalali
   // month since Postgres doesn't know the Jalali calendar. Fine at this
@@ -77,6 +64,7 @@ export default async function FleetHistoryPage(
       id: true,
       day: true,
       total: true,
+      customerId: true,
       customer: { select: { name: true } },
       items: { select: { quantity: true } },
     },
@@ -86,6 +74,7 @@ export default async function FleetHistoryPage(
     const j = toJalali(invoice.day);
     return {
       invoice,
+      day: isoDay(invoice.day),
       key: `${j.year}-${String(j.month).padStart(2, "0")}`,
       jalaliYear: j.year,
       jalaliMonth: j.month,
@@ -108,11 +97,32 @@ export default async function FleetHistoryPage(
   // `invoices` came ordered by day desc, so groups were inserted in that same
   // chronological order — no extra sort needed.
   const history = [...groups.values()];
-  const selected = groups.get(selectedKey);
-  const selectedInvoices = enriched.filter((row) => row.key === selectedKey);
 
-  const prevMonthDay = shiftJalaliMonth(day, -1);
-  const nextMonthDay = shiftJalaliMonth(day, 1);
+  const selectedInvoices = range
+    ? enriched.filter((row) => row.day >= range.start && row.day < range.end)
+    : enriched;
+  const selectedKg = selectedInvoices.reduce((sum, row) => sum + row.invoiceKg, 0);
+  const selectedAmount = selectedInvoices.reduce(
+    (sum, row) => sum + toNum(row.invoice.total),
+    0,
+  );
+
+  const byCustomer = new Map<string, { name: string; count: number; kg: number; amount: number }>();
+  for (const row of selectedInvoices) {
+    const entry = byCustomer.get(row.invoice.customerId) ?? {
+      name: row.invoice.customer.name,
+      count: 0,
+      kg: 0,
+      amount: 0,
+    };
+    entry.count += 1;
+    entry.kg += row.invoiceKg;
+    entry.amount += toNum(row.invoice.total);
+    byCustomer.set(row.invoice.customerId, entry);
+  }
+  const customerTotals = [...byCustomer.entries()]
+    .map(([id, entry]) => ({ id, ...entry }))
+    .sort((a, b) => b.amount - a.amount);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
@@ -130,46 +140,59 @@ export default async function FleetHistoryPage(
       </div>
 
       <div className={`${card} mb-6 p-4`}>
-        <div className="flex items-center justify-between gap-2">
-          <Link href={`/fleets/${fleet.id}?day=${prevMonthDay}`} className={btnGhost}>
-            ماه قبل
-          </Link>
-          <span className="text-sm font-medium">{faMonth(monthStart)}</span>
-          <Link href={`/fleets/${fleet.id}?day=${nextMonthDay}`} className={btnGhost}>
-            ماه بعد
-          </Link>
-        </div>
+        <h2 className="text-sm font-semibold">بایگانی</h2>
+        <p className="mt-0.5 mb-3 text-xs opacity-60">{periodLabel(period, day)}</p>
 
-        {!isCurrentMonth ? (
-          <div className="mt-2 text-center">
-            <Link
-              href={`/fleets/${fleet.id}`}
-              className="text-xs underline opacity-60 hover:opacity-100"
-            >
-              بازگشت به ماه جاری
-            </Link>
-          </div>
-        ) : null}
+        <PeriodNav basePath={`/fleets/${fleet.id}`} period={period} day={day} />
 
-        <div className="mt-4 grid grid-cols-2 gap-3 text-center">
+        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
           <div>
             <div className="text-2xl font-semibold tabular-nums">
-              {selected?.invoiceCount ?? 0}
+              {selectedInvoices.length}
             </div>
             <div className="text-xs opacity-60">فاکتور تحویل‌شده</div>
           </div>
           <div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {kg(selected?.totalKg ?? 0)}
-            </div>
+            <div className="text-2xl font-semibold tabular-nums">{kg(selectedKg)}</div>
             <div className="text-xs opacity-60">کیلوگرم</div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">
+              {money(selectedAmount)}
+            </div>
+            <div className="text-xs opacity-60">تومان</div>
           </div>
         </div>
       </div>
 
+      {customerTotals.length > 1 ? (
+        <div className={`${card} mb-6 overflow-x-auto`}>
+          <table className="w-full min-w-[24rem] text-sm">
+            <thead>
+              <tr>
+                <th className={th}>مشتری</th>
+                <th className={th}>فاکتور</th>
+                <th className={th}>کیلوگرم</th>
+                <th className={th}>مبلغ (تومان)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerTotals.map((row) => (
+                <tr key={row.id} className={rowBorder}>
+                  <td className={`${td} font-medium`}>{row.name}</td>
+                  <td className={`${td} tabular-nums opacity-70`}>{row.count}</td>
+                  <td className={`${td} tabular-nums opacity-70`}>{kg(row.kg)}</td>
+                  <td className={`${td} tabular-nums`}>{money(row.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
       {selectedInvoices.length === 0 ? (
         <div className={`${card} mb-6 p-8 text-center text-sm opacity-60`}>
-          در {faMonth(monthStart)} فاکتوری برای این ناوگان ثبت نشده است.
+          در این بازه فاکتوری برای این ناوگان ثبت نشده است.
         </div>
       ) : (
         <div className={`${card} mb-6 overflow-x-auto`}>
@@ -224,7 +247,7 @@ export default async function FleetHistoryPage(
                 <tr key={group.key} className={rowBorder}>
                   <td className={td}>
                     <Link
-                      href={`/fleets/${fleet.id}?day=${isoDay(group.monthStart)}`}
+                      href={`/fleets/${fleet.id}?period=month&day=${isoDay(group.monthStart)}`}
                       className={`hover:underline ${
                         group.key === selectedKey ? "font-semibold" : ""
                       }`}
