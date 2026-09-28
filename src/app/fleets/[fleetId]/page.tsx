@@ -6,7 +6,6 @@ import { PeriodNav } from "@/components/period-nav";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
-  faDay,
   faMonth,
   isoDay,
   kg,
@@ -207,36 +206,7 @@ export default async function FleetHistoryPage(
         <div className={`${card} mb-6 p-8 text-center text-sm opacity-60`}>
           در این بازه فاکتوری برای این ناوگان ثبت نشده است.
         </div>
-      ) : (
-        <div className={`${card} mb-6 overflow-x-auto`}>
-          <table className="w-full min-w-[26rem] text-sm">
-            <thead>
-              <tr>
-                <th className={th}>مشتری</th>
-                <th className={th}>تاریخ</th>
-                <th className={th}>کیلوگرم</th>
-                <th className={th}>مبلغ (تومان)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedInvoices.map(({ invoice, invoiceKg }) => (
-                <tr key={invoice.id} className={rowBorder}>
-                  <td className={`${td} font-medium`}>
-                    <Link href={`/invoices/${invoice.id}`} className="hover:underline">
-                      {invoice.customer.name}
-                    </Link>
-                  </td>
-                  <td className={`${td} opacity-70`}>{faDay(isoDay(invoice.day))}</td>
-                  <td className={`${td} tabular-nums`}>{kg(invoiceKg)}</td>
-                  <td className={`${td} font-medium tabular-nums`}>
-                    {money(invoice.total)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      ) : null}
 
       <div className={`${card} overflow-x-auto`}>
         <div className="p-4 pb-0">
