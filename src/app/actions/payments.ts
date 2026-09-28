@@ -7,6 +7,7 @@ import { planAllocation } from "@/lib/allocation";
 import { prisma } from "@/lib/db";
 import { money } from "@/lib/format";
 import {
+  optionalText,
   paymentInput,
   priceNumeric,
   text,
@@ -76,6 +77,15 @@ export async function recordPayment(
 
   const amount = new Prisma.Decimal(parsed.data);
   const leftover = await allocate(customerId, amount);
+
+  // Only what actually came off the debt is logged, so the note sits next to
+  // the number that moved rather than a typo that was turned away.
+  const applied = amount.minus(leftover);
+  if (applied.gt(ZERO)) {
+    await prisma.payment.create({
+      data: { customerId, amount: applied, note: optionalText(form, "note") },
+    });
+  }
   revalidateMoney();
 
   if (leftover.gte(amount)) {

@@ -24,8 +24,24 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   invoices Invoice[]
+  payments Payment[]
 
   @@index([name])
+}
+
+/// Money a customer handed over on the finance page. The amount itself is
+/// spread over their invoices' `paidAmount`; this row only remembers when it
+/// came in, how much of it was applied, and the note typed with it.
+model Payment {
+  id         String   @id @default(cuid())
+  customerId String
+  amount     Decimal  @db.Decimal(14, 2)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId, createdAt])
 }
 
 /// A fruit we sell. It has no stored price: every price is bargained with the

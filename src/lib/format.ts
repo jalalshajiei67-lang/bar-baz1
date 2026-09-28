@@ -43,6 +43,11 @@ export function todayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
 }
 
+/** A timestamp -> its "YYYY-MM-DD" day in Tehran. */
+export function tehranDay(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(date);
+}
+
 /** A DATE column value -> "YYYY-MM-DD" (the column is stored at UTC midnight). */
 export function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);

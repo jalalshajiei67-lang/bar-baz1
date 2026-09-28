@@ -3,7 +3,7 @@ import Link from "next/link";
 import { setInvoiceSettled, settleCustomer } from "@/app/actions/payments";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
-import { faDayShort, isoDay, money, toNum } from "@/lib/format";
+import { faDayShort, isoDay, money, tehranDay, toNum } from "@/lib/format";
 import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
 
 import { PaymentForm } from "./payment-form";
@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
 
 /** How many just-settled invoices the undo list at the foot of the page keeps. */
 const SETTLED_LIMIT = 20;
+
+/** How many of a debtor's latest payments (with their notes) the card shows. */
+const PAYMENT_LIMIT = 3;
 
 type OpenInvoice = {
   id: string;
@@ -69,6 +72,18 @@ export default async function FinancePage() {
     });
     debtor.remaining += remaining;
     byCustomer.set(invoice.customerId, debtor);
+  }
+
+  const payments = await prisma.payment.findMany({
+    where: { customerId: { in: [...byCustomer.keys()] } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, customerId: true, amount: true, note: true, createdAt: true },
+  });
+  const paymentsByCustomer = new Map<string, typeof payments>();
+  for (const payment of payments) {
+    const list = paymentsByCustomer.get(payment.customerId) ?? [];
+    if (list.length < PAYMENT_LIMIT) list.push(payment);
+    paymentsByCustomer.set(payment.customerId, list);
   }
 
   const debtors = [...byCustomer.values()].sort(
@@ -143,6 +158,26 @@ export default async function FinancePage() {
                   </li>
                 ))}
               </ul>
+
+              {paymentsByCustomer.get(debtor.id)?.length ? (
+                <ul className="mt-3 space-y-1 text-xs">
+                  {paymentsByCustomer.get(debtor.id)!.map((payment) => (
+                    <li key={payment.id} className="flex gap-2">
+                      <span className="shrink-0 opacity-50">
+                        {faDayShort(tehranDay(payment.createdAt))}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {money(payment.amount)} پرداختی
+                      </span>
+                      {payment.note ? (
+                        <span className="min-w-0 truncate opacity-70">
+                          · {payment.note}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
 
               <PaymentForm
                 customerId={debtor.id}

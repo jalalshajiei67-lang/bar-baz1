@@ -24,6 +24,7 @@ export function PaymentForm({
 }) {
   const [state, formAction] = useActionState(recordPayment, emptyState);
   const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
 
   // A payment that lands changes the debt, which re-renders this card from the
   // server — the box empties then, rather than holding a number already spent.
@@ -31,6 +32,7 @@ export function PaymentForm({
   if (remaining !== syncedRemaining) {
     setSyncedRemaining(remaining);
     setAmount("");
+    setNote("");
   }
 
   return (
@@ -54,6 +56,17 @@ export function PaymentForm({
         </div>
 
         <SubmitButton className={btnPrimary}>کم کردن از بدهی</SubmitButton>
+
+        <input
+          type="text"
+          name="note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={200}
+          className={`${input} basis-full`}
+          placeholder="یادداشت (اختیاری)"
+          aria-label="یادداشت پرداخت"
+        />
       </form>
 
       {state.fieldErrors?.amount ? (
