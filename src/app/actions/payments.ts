@@ -22,6 +22,7 @@ const DEBT = { status: "FINAL", paid: false } as const;
 /** Every screen that shows a debt has to be re-read once money moves. */
 function revalidateMoney(invoiceId?: string) {
   revalidatePath("/finance");
+  revalidatePath("/finance/archive");
   revalidatePath("/invoices");
   revalidatePath("/fleet");
   if (invoiceId) revalidatePath(`/invoices/${invoiceId}`);
@@ -110,14 +111,33 @@ export async function setInvoiceSettled(form: FormData) {
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    select: { total: true },
+    select: { customerId: true, total: true, paidAmount: true },
   });
   if (!invoice) return;
 
-  await prisma.invoice.update({
-    where: { id },
-    data: { paid: settled, paidAmount: settled ? invoice.total : ZERO },
-  });
+  // The archive reads money from the payment log, so the flip is logged too:
+  // settling adds what was still owed, unsettling takes back all that was paid.
+  const change = settled
+    ? Prisma.Decimal.max(invoice.total.minus(invoice.paidAmount), ZERO)
+    : invoice.paidAmount.negated();
+
+  await prisma.$transaction([
+    prisma.invoice.update({
+      where: { id },
+      data: { paid: settled, paidAmount: settled ? invoice.total : ZERO },
+    }),
+    ...(change.isZero()
+      ? []
+      : [
+          prisma.payment.create({
+            data: {
+              customerId: invoice.customerId,
+              amount: change,
+              note: settled ? "تسویه‌ی فاکتور" : "برگشت تسویه",
+            },
+          }),
+        ]),
+  ]);
   revalidateMoney(id);
 }
 
@@ -128,16 +148,24 @@ export async function settleCustomer(form: FormData) {
 
   const invoices = await prisma.invoice.findMany({
     where: { customerId, ...DEBT },
-    select: { id: true, total: true },
+    select: { id: true, total: true, paidAmount: true },
   });
 
-  await prisma.$transaction(
-    invoices.map((invoice) =>
+  const owed = invoices.reduce(
+    (sum, invoice) => sum.plus(Prisma.Decimal.max(invoice.total.minus(invoice.paidAmount), ZERO)),
+    ZERO,
+  );
+
+  await prisma.$transaction([
+    ...invoices.map((invoice) =>
       prisma.invoice.update({
         where: { id: invoice.id },
         data: { paid: true, paidAmount: invoice.total },
       }),
     ),
-  );
+    ...(owed.gt(ZERO)
+      ? [prisma.payment.create({ data: { customerId, amount: owed, note: "تسویه‌ی کامل" } })]
+      : []),
+  ]);
   revalidateMoney();
 }

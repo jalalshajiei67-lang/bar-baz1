@@ -93,7 +93,12 @@ export default async function FinancePage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
-      <h1 className="text-xl font-semibold tracking-tight">مالی</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight">مالی</h1>
+        <Link href="/finance/archive" className={`${btnGhost} text-xs`}>
+          بایگانی تراکنش‌ها
+        </Link>
+      </div>
       <p className="mt-1 text-sm opacity-60">
         {debtors.length === 0
           ? "همه‌ی فاکتورها تسویه شده است."

@@ -24,13 +24,18 @@ const MONTH_NAMES = [
 
 const WEEKDAY_LABELS = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
 
-/** Popover Jalali calendar; navigates to `${basePath}?day=YYYY-MM-DD` on pick. */
+/**
+ * Popover Jalali calendar; navigates to `${basePath}?day=YYYY-MM-DD` on pick,
+ * carrying `params` along so a page's other filters survive the jump.
+ */
 export function JalaliDatePicker({
   day,
   basePath = "/invoices",
+  params,
 }: {
   day: string;
   basePath?: string;
+  params?: Record<string, string>;
 }) {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -56,7 +61,8 @@ export function JalaliDatePicker({
   function pick(dayOfMonth: number) {
     const gregorian = fromJalali({ year: view.year, month: view.month, day: dayOfMonth });
     setOpen(false);
-    router.push(`${basePath}?day=${isoDay(gregorian)}`);
+    const query = new URLSearchParams({ ...params, day: isoDay(gregorian) });
+    router.push(`${basePath}?${query}`);
   }
 
   function shiftMonth(delta: number) {
