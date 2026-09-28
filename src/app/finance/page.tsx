@@ -4,6 +4,7 @@ import { setInvoiceSettled, settleCustomer } from "@/app/actions/payments";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
 import { faDayShort, isoDay, kg, money, tehranDay, toNum } from "@/lib/format";
+import { matches } from "@/lib/search";
 import { btnGhost, card, input, rowBorder, td, th } from "@/lib/ui";
 
 import { PaymentForm } from "./payment-form";
@@ -40,15 +41,6 @@ type Debtor = {
   invoices: OpenInvoice[];
   remaining: number;
 };
-
-/** Folds the spellings a phone keyboard mixes up, so "علي" finds "علی". */
-function searchable(text: string): string {
-  return text
-    .replace(/ي/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\s]+/g, "")
-    .toLowerCase();
-}
 
 export default async function FinancePage(props: PageProps<"/finance">) {
   const qParam = (await props.searchParams).q;
@@ -138,9 +130,8 @@ export default async function FinancePage(props: PageProps<"/finance">) {
 
   // The search only narrows the cards; the grand total below stays the whole
   // debt, so a search can never make the shop look owed less than it is.
-  const needle = searchable(q);
-  const debtors = needle
-    ? allDebtors.filter((debtor) => searchable(debtor.name).includes(needle))
+  const debtors = q
+    ? allDebtors.filter((debtor) => matches(debtor.name, q))
     : allDebtors;
 
   return (
