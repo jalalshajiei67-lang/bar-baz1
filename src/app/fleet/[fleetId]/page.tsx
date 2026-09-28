@@ -1,19 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { JalaliDatePicker } from "@/components/jalali-date-picker";
+import { FruitTotalsTable } from "@/components/fruit-totals";
+import { PeriodNav } from "@/components/period-nav";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
-  faDay,
   faDayShort,
   isoDay,
+  kg,
   money,
   normalizeDay,
-  shiftDay,
   todayISO,
+  toNum,
 } from "@/lib/format";
-import { btnGhost, card } from "@/lib/ui";
+import { normalizePeriod, periodLabel, periodRange } from "@/lib/periods";
+import { card } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +26,24 @@ type RoundInvoice = {
   paid: boolean;
   total: { toString(): string };
   customer: { name: string; address: string | null };
-  items: { packCount: number | null }[];
+  items: {
+    packCount: number | null;
+    quantity: { toString(): string };
+    lineTotal: { toString(): string };
+    fruit: { id: string; name: string };
+  }[];
 };
 
 const roundSelect = {
   customer: { select: { name: true, address: true } },
-  items: { select: { packCount: true } },
+  items: {
+    select: {
+      packCount: true,
+      quantity: true,
+      lineTotal: true,
+      fruit: { select: { id: true, name: true } },
+    },
+  },
 } as const;
 
 /** One shop on the round. Same card whether it is still to do or already done. */
@@ -109,8 +123,8 @@ function LoadCard({
 }
 
 /**
- * The driver's whole world: everything still to weigh, then a day-by-day look
- * back at finished rounds. This page links nowhere else in the app — the only
+ * The driver's whole world: everything still to weigh, then an archive of
+ * finished rounds — a day by default, or all time, a Jalali year, month or week. This page links nowhere else in the app — the only
  * way in is the link the admin sends, and there is no page that lists the
  * fleets, so one driver cannot wander into another's round.
  */
@@ -118,7 +132,11 @@ export default async function FleetDayPage(
   props: PageProps<"/fleet/[fleetId]">,
 ) {
   const { fleetId } = await props.params;
-  const day = normalizeDay((await props.searchParams).day);
+  const searchParams = await props.searchParams;
+  const day = normalizeDay(searchParams.day);
+  // A driver mostly looks back at one round, so the archive opens on a day.
+  const period = normalizePeriod(searchParams.period, "day");
+  const range = periodRange(period, day);
   const today = todayISO();
 
   const fleet = await prisma.fleet.findUnique({
@@ -127,7 +145,7 @@ export default async function FleetDayPage(
   });
   if (!fleet) notFound();
 
-  const [outstanding, doneThatDay] = await Promise.all([
+  const [outstanding, done] = await Promise.all([
     // Any date, not just today: a load created for tomorrow or left over from
     // yesterday must not look like no load at all. Oldest first — those are
     // the ones at risk of being forgotten.
@@ -137,11 +155,24 @@ export default async function FleetDayPage(
       include: roundSelect,
     }),
     prisma.invoice.findMany({
-      where: { fleetId, status: "FINAL", day: dayToDate(day) },
-      orderBy: { createdAt: "asc" },
+      where: {
+        fleetId,
+        status: "FINAL",
+        ...(range
+          ? { day: { gte: dayToDate(range.start), lt: dayToDate(range.end) } }
+          : {}),
+      },
+      orderBy: [{ day: "desc" }, { createdAt: "asc" }],
       include: roundSelect,
     }),
   ]);
+
+  const doneKg = done.reduce(
+    (sum, invoice) =>
+      sum + invoice.items.reduce((s, item) => s + toNum(item.quantity), 0),
+    0,
+  );
+  const doneAmount = done.reduce((sum, invoice) => sum + toNum(invoice.total), 0);
 
   const basePath = `/fleet/${fleetId}`;
 
@@ -176,37 +207,35 @@ export default async function FleetDayPage(
       </section>
 
       <section className="mt-8 border-t border-black/10 pt-6 dark:border-white/15">
-        <h2 className="text-sm font-semibold">بارهای ثبت‌شده</h2>
-        <p className="mt-1 text-sm opacity-60">{faDay(day)}</p>
+        <h2 className="text-sm font-semibold">بایگانی بارهای ثبت‌شده</h2>
+        <p className="mt-1 mb-3 text-sm opacity-60">{periodLabel(period, day)}</p>
 
-        <div className="mt-3 mb-4 flex flex-wrap items-center gap-2">
-          <Link
-            href={`${basePath}?day=${shiftDay(day, -1)}`}
-            className={btnGhost}
-          >
-            روز قبل
-          </Link>
-          <JalaliDatePicker day={day} basePath={basePath} />
-          <Link
-            href={`${basePath}?day=${shiftDay(day, 1)}`}
-            className={btnGhost}
-          >
-            روز بعد
-          </Link>
-          {day !== today ? (
-            <Link href={`${basePath}?day=${today}`} className={btnGhost}>
-              امروز
-            </Link>
-          ) : null}
+        <PeriodNav basePath={basePath} period={period} day={day} />
+
+        <div className="mt-4 mb-4 grid grid-cols-2 gap-3 text-center">
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">{done.length}</div>
+            <div className="text-xs opacity-60">بار ثبت‌شده</div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">{kg(doneKg)}</div>
+            <div className="text-xs opacity-60">کیلوگرم</div>
+          </div>
+          <div className="col-span-2 rounded-lg bg-black/[0.03] py-2 dark:bg-white/[0.04]">
+            <div className="text-2xl font-semibold tabular-nums">{money(doneAmount)}</div>
+            <div className="text-xs opacity-60">جمع فاکتورها (تومان)</div>
+          </div>
         </div>
 
-        {doneThatDay.length === 0 ? (
+        <FruitTotalsTable items={done.flatMap((invoice) => invoice.items)} className="mb-4" />
+
+        {done.length === 0 ? (
           <div className={`${card} p-8 text-center text-sm opacity-60`}>
-            در این روز باری ثبت نکرده‌اید.
+            در این بازه باری ثبت نکرده‌اید.
           </div>
         ) : (
           <ul className="grid gap-3">
-            {doneThatDay.map((invoice) => (
+            {done.map((invoice) => (
               <LoadCard
                 key={invoice.id}
                 invoice={invoice}

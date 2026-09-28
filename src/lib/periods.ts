@@ -16,8 +16,9 @@ export const PERIODS = [
 
 export type Period = (typeof PERIODS)[number]["value"];
 
-export function normalizePeriod(value: unknown): Period {
-  return PERIODS.some((p) => p.value === value) ? (value as Period) : "month";
+/** A `?period=` value, or `fallback` when it is missing or unknown. */
+export function normalizePeriod(value: unknown, fallback: Period = "month"): Period {
+  return PERIODS.some((p) => p.value === value) ? (value as Period) : fallback;
 }
 
 /** Start (inclusive) and end (exclusive) as "YYYY-MM-DD"; null means all time. */
