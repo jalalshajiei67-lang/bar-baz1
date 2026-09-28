@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { JalaliDatePicker } from "@/components/jalali-date-picker";
+import { PeriodNav } from "@/components/period-nav";
 import { prisma } from "@/lib/db";
 import {
   dayToDate,
@@ -9,17 +9,13 @@ import {
   money,
   normalizeDay,
   tehranDay,
-  todayISO,
   toNum,
 } from "@/lib/format";
 import {
-  PERIODS,
   normalizePeriod,
   periodLabel,
   periodRange,
-  shiftPeriod,
   tehranMidnight,
-  type Period,
 } from "@/lib/periods";
 import { btnGhost, card, input, label, rowBorder, td, th } from "@/lib/ui";
 
@@ -50,7 +46,6 @@ export default async function FinanceArchivePage(
   const day = normalizeDay(params.day);
   const customerId =
     typeof params.customer === "string" && params.customer ? params.customer : "";
-  const today = todayISO();
   const range = periodRange(period, day);
 
   const [customers, invoices, payments] = await Promise.all([
@@ -150,19 +145,8 @@ export default async function FinanceArchivePage(
 
   const selectedName = customers.find((c) => c.id === customerId)?.name;
 
-  /** This page's URL with some of its filters swapped. */
-  function href(change: { period?: Period; day?: string; customer?: string }) {
-    const query = new URLSearchParams({
-      period: change.period ?? period,
-      day: change.day ?? day,
-    });
-    const customer = change.customer ?? customerId;
-    if (customer) query.set("customer", customer);
-    return `/finance/archive?${query}`;
-  }
-
-  const keepParams: Record<string, string> = { period };
-  if (customerId) keepParams.customer = customerId;
+  const customerHref = (id: string) =>
+    `/finance/archive?${new URLSearchParams({ period, day, customer: id })}`;
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
@@ -202,38 +186,14 @@ export default async function FinanceArchivePage(
         </button>
       </form>
 
-      <div className="mt-3 flex gap-1 overflow-x-auto">
-        {PERIODS.map((p) => (
-          <Link
-            key={p.value}
-            href={href({ period: p.value })}
-            className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition ${
-              p.value === period
-                ? "bg-emerald-600/10 font-medium text-emerald-700 dark:text-emerald-400"
-                : "opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-            }`}
-          >
-            {p.label}
-          </Link>
-        ))}
+      <div className="mt-3">
+        <PeriodNav
+          basePath="/finance/archive"
+          period={period}
+          day={day}
+          params={customerId ? { customer: customerId } : {}}
+        />
       </div>
-
-      {range ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Link href={href({ day: shiftPeriod(period, day, -1) })} className={btnGhost}>
-            قبلی
-          </Link>
-          <JalaliDatePicker day={day} basePath="/finance/archive" params={keepParams} />
-          <Link href={href({ day: shiftPeriod(period, day, 1) })} className={btnGhost}>
-            بعدی
-          </Link>
-          {day !== today ? (
-            <Link href={href({ day: today })} className={btnGhost}>
-              امروز
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="فاکتور شده" value={invoiced} />
@@ -260,7 +220,7 @@ export default async function FinanceArchivePage(
               {customerTotals.map((row) => (
                 <tr key={row.id} className={rowBorder}>
                   <td className={`${td} font-medium`}>
-                    <Link href={href({ customer: row.id })} className="hover:underline">
+                    <Link href={customerHref(row.id)} className="hover:underline">
                       {row.name}
                     </Link>
                   </td>
