@@ -1,3 +1,4 @@
+import Link from "next/link";
 
 import { deleteFleet, renameFleet, toggleFleet } from "@/app/actions/fleets";
 import { Banner } from "@/components/banner";
@@ -76,8 +77,14 @@ export default async function FleetsPage(props: PageProps<"/fleets">) {
                   <td className={td}>
                     <DriverLink fleetId={fleet.id} />
                   </td>
-                  <td className={`${td} whitespace-nowrap opacity-70`}>
-                    {fleet._count.invoices} فاکتور
+                  <td className={`${td} whitespace-nowrap`}>
+                    <Link
+                      href={`/fleets/${fleet.id}`}
+                      className="opacity-70 hover:underline hover:opacity-100"
+                      title="سابقه‌ی ماه‌به‌ماه این ناوگان"
+                    >
+                      {fleet._count.invoices} فاکتور
+                    </Link>
                   </td>
                   <td className={td}>
                     <form action={toggleFleet}>
@@ -116,7 +123,8 @@ export default async function FleetsPage(props: PageProps<"/fleets">) {
         ناوگانی که فاکتور ثبت‌شده دارد حذف نمی‌شود؛ آن را غیرفعال کنید تا از
         فهرست انتخاب در فاکتور جدید کنار برود. لینک راننده را یک‌بار برای او
         بفرستید تا ذخیره‌اش کند؛ این تنها جایی است که این لینک‌ها وجود دارند و
-        هر راننده فقط بارهای خودش را می‌بیند.
+        هر راننده فقط بارهای خودش را می‌بیند. روی تعداد فاکتورهای هر ناوگان
+        بزنید تا سابقه‌ی تحویل او را ماه‌به‌ماه ببینید.
       </p>
     </main>
   );
