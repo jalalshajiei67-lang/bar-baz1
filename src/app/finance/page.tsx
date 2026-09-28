@@ -4,7 +4,7 @@ import { setInvoiceSettled, settleCustomer } from "@/app/actions/payments";
 import { ConfirmButton } from "@/components/buttons";
 import { prisma } from "@/lib/db";
 import { faDayShort, isoDay, kg, money, tehranDay, toNum } from "@/lib/format";
-import { btnGhost, card, rowBorder, td, th } from "@/lib/ui";
+import { btnGhost, card, input, rowBorder, td, th } from "@/lib/ui";
 
 import { PaymentForm } from "./payment-form";
 
@@ -41,7 +41,18 @@ type Debtor = {
   remaining: number;
 };
 
-export default async function FinancePage() {
+/** Folds the spellings a phone keyboard mixes up, so "علي" finds "علی". */
+function searchable(text: string): string {
+  return text
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\s]+/g, "")
+    .toLowerCase();
+}
+
+export default async function FinancePage(props: PageProps<"/finance">) {
+  const qParam = (await props.searchParams).q;
+  const q = typeof qParam === "string" ? qParam.trim() : "";
   const [openInvoices, settledInvoices] = await Promise.all([
     prisma.invoice.findMany({
       where: { status: "FINAL", paid: false },
@@ -120,10 +131,17 @@ export default async function FinancePage() {
     paymentsByCustomer.set(payment.customerId, list);
   }
 
-  const debtors = [...byCustomer.values()].sort(
+  const allDebtors = [...byCustomer.values()].sort(
     (a, b) => b.remaining - a.remaining,
   );
-  const grandTotal = debtors.reduce((sum, debtor) => sum + debtor.remaining, 0);
+  const grandTotal = allDebtors.reduce((sum, debtor) => sum + debtor.remaining, 0);
+
+  // The search only narrows the cards; the grand total below stays the whole
+  // debt, so a search can never make the shop look owed less than it is.
+  const needle = searchable(q);
+  const debtors = needle
+    ? allDebtors.filter((debtor) => searchable(debtor.name).includes(needle))
+    : allDebtors;
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
@@ -134,14 +152,41 @@ export default async function FinancePage() {
         </Link>
       </div>
       <p className="mt-1 text-sm opacity-60">
-        {debtors.length === 0
+        {allDebtors.length === 0
           ? "همه‌ی فاکتورها تسویه شده است."
-          : `${debtors.length} مشتری بدهکار`}
+          : q
+            ? `${debtors.length} از ${allDebtors.length} مشتری بدهکار`
+            : `${allDebtors.length} مشتری بدهکار`}
       </p>
 
-      {debtors.length === 0 ? (
+      {allDebtors.length > 0 ? (
+        <form className="mt-4 flex gap-2">
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            className={input}
+            placeholder="جستجوی مشتری…"
+            aria-label="جستجوی مشتری"
+          />
+          <button type="submit" className={btnGhost}>
+            جستجو
+          </button>
+          {q ? (
+            <Link href="/finance" className={btnGhost}>
+              همه
+            </Link>
+          ) : null}
+        </form>
+      ) : null}
+
+      {allDebtors.length === 0 ? (
         <div className={`${card} mt-6 p-8 text-center text-sm opacity-60`}>
           فاکتور پرداخت‌نشده‌ای نیست.
+        </div>
+      ) : debtors.length === 0 ? (
+        <div className={`${card} mt-6 p-8 text-center text-sm opacity-60`}>
+          مشتری بدهکاری با «{q}» پیدا نشد.
         </div>
       ) : (
         <div className="mt-6 space-y-4">
