@@ -66,7 +66,14 @@ export default async function FleetHistoryPage(
       total: true,
       customerId: true,
       customer: { select: { name: true } },
-      items: { select: { quantity: true } },
+      items: {
+        select: {
+          quantity: true,
+          packCount: true,
+          lineTotal: true,
+          fruit: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 
@@ -124,6 +131,31 @@ export default async function FleetHistoryPage(
     .map(([id, entry]) => ({ id, ...entry }))
     .sort((a, b) => b.amount - a.amount);
 
+  // Each fruit on its own: how much of it this vehicle carried out in the period.
+  const byFruit = new Map<
+    string,
+    { name: string; kg: number; boxes: number; loose: boolean; amount: number }
+  >();
+  for (const row of selectedInvoices) {
+    for (const item of row.invoice.items) {
+      const entry = byFruit.get(item.fruit.id) ?? {
+        name: item.fruit.name,
+        kg: 0,
+        boxes: 0,
+        loose: false,
+        amount: 0,
+      };
+      entry.kg += toNum(item.quantity);
+      entry.boxes += item.packCount ?? 0;
+      entry.loose ||= item.packCount === null;
+      entry.amount += toNum(item.lineTotal);
+      byFruit.set(item.fruit.id, entry);
+    }
+  }
+  const fruitTotals = [...byFruit.entries()]
+    .map(([id, entry]) => ({ id, ...entry }))
+    .sort((a, b) => b.kg - a.kg);
+
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
       <Link href="/fleets" className="text-sm opacity-60 hover:underline">
@@ -145,7 +177,7 @@ export default async function FleetHistoryPage(
 
         <PeriodNav basePath={`/fleets/${fleet.id}`} period={period} day={day} />
 
-        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+        <div className="mt-4 grid grid-cols-2 gap-3 text-center">
           <div>
             <div className="text-2xl font-semibold tabular-nums">
               {selectedInvoices.length}
@@ -156,18 +188,60 @@ export default async function FleetHistoryPage(
             <div className="text-2xl font-semibold tabular-nums">{kg(selectedKg)}</div>
             <div className="text-xs opacity-60">کیلوگرم</div>
           </div>
-          <div>
+          <div className="col-span-2 rounded-lg bg-black/[0.03] py-2 dark:bg-white/[0.04]">
             <div className="text-2xl font-semibold tabular-nums">
               {money(selectedAmount)}
             </div>
-            <div className="text-xs opacity-60">تومان</div>
+            <div className="text-xs opacity-60">جمع فاکتورها (تومان)</div>
           </div>
         </div>
       </div>
 
+      {fruitTotals.length > 0 ? (
+        <div className={`${card} mb-6 overflow-x-auto`}>
+          <div className="p-4 pb-0">
+            <h2 className="text-sm font-semibold">میوه‌های تحویل‌شده</h2>
+          </div>
+          <table className="mt-2 w-full text-sm">
+            <thead>
+              <tr>
+                <th className={th}>میوه</th>
+                <th className={th}>کیلوگرم</th>
+                <th className={th}>جعبه</th>
+                <th className={th}>مبلغ (تومان)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fruitTotals.map((row) => (
+                <tr key={row.id} className={rowBorder}>
+                  <td className={`${td} font-medium`}>{row.name}</td>
+                  <td className={`${td} tabular-nums`}>{kg(row.kg)}</td>
+                  <td className={`${td} tabular-nums opacity-70`}>
+                    {row.boxes > 0 ? row.boxes : ""}
+                    {row.boxes > 0 && row.loose ? " + " : ""}
+                    {row.loose ? "فله" : ""}
+                  </td>
+                  <td className={`${td} tabular-nums`}>{money(row.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className={rowBorder}>
+                <td className={`${td} opacity-60`}>جمع کل</td>
+                <td className={`${td} font-semibold tabular-nums`}>{kg(selectedKg)}</td>
+                <td className={td} />
+                <td className={`${td} font-semibold tabular-nums`}>
+                  {money(selectedAmount)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      ) : null}
+
       {customerTotals.length > 1 ? (
         <div className={`${card} mb-6 overflow-x-auto`}>
-          <table className="w-full min-w-[24rem] text-sm">
+          <table className="w-full text-sm">
             <thead>
               <tr>
                 <th className={th}>مشتری</th>
